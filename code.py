@@ -27,6 +27,11 @@ HEIGHT = 750
 # 聊天入口：
 X_CHAT = 738
 Y_CHAT = 847
+# 招募位置
+X_ZHAOMU = 145
+Y_ZHAOMU = 429
+
+
 # 运行状态开关
 IS_RUNNING = False  
 
@@ -107,7 +112,7 @@ def bkgnd_full_window_screenshot(hwnd: int = HWND) -> np.ndarray:
 
 
 # 调用截图函数，得到截图 numpy 数组
-img = bkgnd_full_window_screenshot()
+# img = bkgnd_full_window_screenshot()
 
 # # 可以用 OpenCV 显示一下
 # cv.imshow("image", img)
@@ -115,15 +120,25 @@ img = bkgnd_full_window_screenshot()
 # cv.destroyAllWindows()
 
 # # ---------------------- 鼠标点击函数 ----------------------
-def click_at(x, y):
-    # 将坐标转换为 LONG 类型
+def click_at(x, y, delay=0.03):
     lParam = win32api.MAKELONG(x, y)
-
-    # 模拟鼠标点击
+    # 让窗口先收到“鼠标移动到此处”
+    win32api.PostMessage(HWND, win32con.WM_MOUSEMOVE, 0, lParam)
+    time.sleep(0.01)
+    # 按下与抬起
     win32api.PostMessage(HWND, win32con.WM_LBUTTONDOWN, win32con.MK_LBUTTON, lParam)
+    time.sleep(delay)
     win32api.PostMessage(HWND, win32con.WM_LBUTTONUP, 0, lParam)
 
-click_at(X_CHAT,Y_CHAT)
+def word_click():
+    # 从主界面进入
+    click_at(X_CHAT, Y_CHAT)
+    time.sleep(1)  # 延时，使上一个点击事件结束，为考虑严谨，后续可加入状态机
+    click_at(X_ZHAOMU, Y_ZHAOMU)
+    # 开始做判断，加入ocr，指定区域内若出现指定文字，则进行点击
+
+img = bkgnd_full_window_screenshot() #必须要先运行这个，点击事件才能成功，暂时还没懂哪一步是关键
+word_click()
 # # ---------------------- 模板匹配相关函数（优化后：单次截图复用+灰度图+预加载） ----------------------
 # # 资源路径获取函数
 # def get_resource_path(relative_path):
