@@ -23,6 +23,10 @@ Y_POS = 0
 WIDTH = 400
 HEIGHT = 750
 
+# 游戏界面固定按钮坐标
+# 聊天入口：
+X_CHAT = 738
+Y_CHAT = 847
 # 运行状态开关
 IS_RUNNING = False  
 
@@ -40,7 +44,17 @@ else:
     win32gui.MoveWindow(HWND, X_POS, Y_POS, WIDTH, HEIGHT, True)
 
 # # ---------------------- 后台截图函数（优化后：消除冗余操作） ----------------------
+# 当前bug：启动一次之后，保持窗口在左上角，位置不变，尺寸不变，那么程序运行会正常
+# 将窗口缩小后，并最小化，运行程序，截图正常，但窗口何图像尺寸都变小了
+# 将窗口缩小，但不最小化，运行程序，窗口尺寸变正常，但截图有大量黑边
 def bkgnd_full_window_screenshot(hwnd: int = HWND) -> np.ndarray:
+    # 1) 如果最小化，先恢复
+    if win32gui.IsIconic(hwnd):
+        print("[DEBUG] 窗口处于最小化，正在恢复...")
+        win32gui.ShowWindow(hwnd, win32con.SW_RESTORE)
+        time.sleep(0.2)  # 给一点点时间让窗口重绘/恢复
+
+    # 2) 再继续你原来的截图逻辑
     print("[DEBUG] 开始截图...")
 
     # 抑制系统缩放
@@ -48,7 +62,7 @@ def bkgnd_full_window_screenshot(hwnd: int = HWND) -> np.ndarray:
     print("[DEBUG] DPI设置完成")
 
     # 获取窗口矩形
-    rect = win32gui.GetWindowRect(hwnd)
+    rect = win32gui.GetClientRect(hwnd)
     width, height = rect[2] - rect[0], rect[3] - rect[1]
     print(f"[DEBUG] 窗口位置和尺寸: 左上({rect[0]}, {rect[1]}), 宽高({width}x{height})")
 
@@ -79,7 +93,7 @@ def bkgnd_full_window_screenshot(hwnd: int = HWND) -> np.ndarray:
     capture = np.ascontiguousarray(capture)[..., :-1]
 
     # 临时保存图片用于调试
-    cv.imwrite("debug_screenshot.png", capture)
+    cv.imwrite("debug_screenshot2.png", capture)
     print("[DEBUG] 截图已保存为 debug_screenshot.png，可打开查看")
 
     # 释放资源
@@ -91,13 +105,25 @@ def bkgnd_full_window_screenshot(hwnd: int = HWND) -> np.ndarray:
 
     return capture
 
+
 # 调用截图函数，得到截图 numpy 数组
 img = bkgnd_full_window_screenshot()
 
-# 可以用 OpenCV 显示一下
-cv.imshow("image", img)
-cv.waitKey(0)
-cv.destroyAllWindows()
+# # 可以用 OpenCV 显示一下
+# cv.imshow("image", img)
+# cv.waitKey(0)
+# cv.destroyAllWindows()
+
+# # ---------------------- 鼠标点击函数 ----------------------
+def click_at(x, y):
+    # 将坐标转换为 LONG 类型
+    lParam = win32api.MAKELONG(x, y)
+
+    # 模拟鼠标点击
+    win32api.PostMessage(HWND, win32con.WM_LBUTTONDOWN, win32con.MK_LBUTTON, lParam)
+    win32api.PostMessage(HWND, win32con.WM_LBUTTONUP, 0, lParam)
+
+click_at(X_CHAT,Y_CHAT)
 # # ---------------------- 模板匹配相关函数（优化后：单次截图复用+灰度图+预加载） ----------------------
 # # 资源路径获取函数
 # def get_resource_path(relative_path):
