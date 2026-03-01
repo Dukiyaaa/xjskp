@@ -25,20 +25,47 @@ class WorldAutomation:
         # 游戏窗口位置和大小
         self.X_POS = 0
         self.Y_POS = 0
-        self.WIDTH = 400
-        self.HEIGHT = 750
+        self.WIDTH = 500
+        self.HEIGHT = 900
 
         # 游戏界面固定按钮坐标
-        self.X_CHAT = 738
-        self.Y_CHAT = 847
-        self.X_ZHAOMU = 145
-        self.Y_ZHAOMU = 429
-        self.X_CONFIRM = 414
-        self.Y_CONFIRM = 961
+        # 聊天框全局相对坐标
+        self.X_CHAT_C = 0.9225
+        self.Y_CHAT_C = 0.5647
+        self.X_CHAT = int(self.WIDTH * 2 * self.X_CHAT_C)
+        self.Y_CHAT = int(self.HEIGHT * 2 * self.Y_CHAT_C)
 
+        # 招募框全局相对坐标
+        self.X_RECRUIT_C = 0.18125
+        self.Y_RECRUIT_C = 0.2867
+        self.X_RECRUIT = int(self.WIDTH * 2 * self.X_RECRUIT_C)
+        self.Y_RECRUIT = int(self.HEIGHT * 2 * self.Y_RECRUIT_C)
+
+        # 招募确定框全局相对坐标
+        self.X_CONFIRM_C = 0.5175
+        self.Y_CONFIRM_C = 0.641
+        self.X_CONFIRM = int(self.WIDTH * 2 * self.X_CONFIRM_C)
+        self.Y_CONFIRM = int(self.HEIGHT * 2 * self.Y_CONFIRM_C)
+        self.click_coords = (self.X_CONFIRM, self.Y_CONFIRM)  # 确认按钮位置
+
+        # OCR关键词ROI区域
+        self.ROI_X1_C = 0.375
+        self.ROI_Y1_C = 0.602
+        self.ROI_X2_C = 0.5925
+        self.ROI_Y2_C = 0.623
+        self.ROI_TEXT = (int(self.WIDTH * 2 * self.ROI_X1_C),
+                         int(self.HEIGHT * 2 * self.ROI_Y1_C),
+                         int(self.WIDTH * 2 * self.ROI_X2_C),
+                         int(self.HEIGHT * 2 * self.ROI_Y2_C))
+
+        # 抢环关键词
+        self.keyword = "救援"
         # 运行状态开关
         self.IS_RUNNING = False
-
+        # 重试次数,如果ocr持续识别不到文字,说明页面有问题,需返回首页
+        self.RETRY = 0
+        # 状态机管理 0:主页 1:聊天框 2:招募框
+        self.VIEW = 0
         # 初始化 OCR 读取器
         self.OCR_READER = easyocr.Reader(['ch_sim', 'en'], gpu=False)
 
@@ -146,7 +173,16 @@ class WorldAutomation:
         """
         # 获取 OCR 识别的文本
         text, crop, bin_img = self.ocr_text_in_roi(scene_bgr, roi)
-
+        if text == "":
+            self.RETRY += 1
+            if self.RETRY > 10:
+                self.VIEW = 0
+                self.RETRY = 0
+                print(f'页面可能不处于招募界面,即将返回主页')
+                return
+        print(f'[OCR]: 识别出的文本为 {text}')
+        cv.imwrite("debug_roi_crop.png", crop)
+        cv.imwrite("debug_roi_bin.png", bin_img)
         # 如果识别到目标文字，就执行点击
         if keyword in text:
             self.click_at_without_hover(click_coords[0], click_coords[1])
@@ -155,29 +191,26 @@ class WorldAutomation:
         """
         执行自动化的点击操作和 OCR 识别。
         """
-        # 每次进入新页面前，都需要先截下图
-        scene_bgr = self.bkgnd_full_window_screenshot()
-        # 执行点击前的操作
-        self.click_at(self.X_CHAT, self.Y_CHAT)
-        time.sleep(1)  # 等待界面稳定
-
-        # 进入招募界面
-        self.click_at(self.X_ZHAOMU, self.Y_ZHAOMU)
-        time.sleep(0.8)  # 等待页面加载
-
         # 获取截图（此处假设 scene_bgr 是当前截图）
-        scene_bgr = self.bkgnd_full_window_screenshot()
-
-        # 设置 ROI 区域（这里是裁剪你框出的区域）
-        ROI_TEXT = (300, 903, 474, 935)  # 假设此为你框出来的区域坐标
-
-        # 进行 OCR 和点击
-        keyword = "救援"  # 需要识别的关键字
-        click_coords = (self.X_CONFIRM, self.Y_CONFIRM)  # 确认按钮位置
-
+        # scene_bgr = self.bkgnd_full_window_screenshot()
         while True:
-            scene_bgr = self.bkgnd_full_window_screenshot()
-            self.ocr_and_click(scene_bgr, ROI_TEXT, keyword, click_coords)
+            if self.VIEW == 0:
+                # 每次进入新页面前，都需要先截下图
+                scene_bgr = self.bkgnd_full_window_screenshot()
+                # 执行点击前的操作
+                self.click_at(self.X_CHAT, self.Y_CHAT)
+                time.sleep(0.8)  # 等待界面稳定
+                self.VIEW = 1
+            elif self.VIEW == 1:
+                # 每次进入新页面前，都需要先截下图
+                scene_bgr = self.bkgnd_full_window_screenshot()
+                # 进入招募界面
+                self.click_at(self.X_RECRUIT, self.Y_RECRUIT)
+                time.sleep(0.8)  # 等待页面加载
+                self.VIEW = 2
+            elif self.VIEW == 2:
+                scene_bgr = self.bkgnd_full_window_screenshot()
+                self.ocr_and_click(scene_bgr, self.ROI_TEXT, self.keyword, self.click_coords)
 
 # 执行自动化操作
 if __name__ == "__main__":
