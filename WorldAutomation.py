@@ -66,6 +66,9 @@ class WorldAutomation:
         self.RETRY = 0
         # 状态机管理 0:主页 1:聊天框 2:招募框
         self.VIEW = 0
+        # 鼠标点击间隔
+        self._last_click_ts = 0.0
+        self._min_click_interval = 0.06  # 60ms，建议 40~120ms 之间调
         # 初始化 OCR 读取器
         self.OCR_READER = easyocr.Reader(['ch_sim', 'en'], gpu=False)
 
@@ -141,9 +144,11 @@ class WorldAutomation:
         win32api.PostMessage(self.HWND, win32con.WM_LBUTTONUP, 0, lParam)
 
     def click_at_without_hover(self, x, y):
-        """
-        直接点击，不先移动鼠标，适用于快速点击，但稳定性可能较差。
-        """
+        now = time.time()
+        if now - self._last_click_ts < self._min_click_interval:
+            return
+        self._last_click_ts = now
+
         lParam = win32api.MAKELONG(x, y)
         win32api.PostMessage(self.HWND, win32con.WM_LBUTTONDOWN, win32con.MK_LBUTTON, lParam)
         win32api.PostMessage(self.HWND, win32con.WM_LBUTTONUP, 0, lParam)
@@ -185,7 +190,7 @@ class WorldAutomation:
         cv.imwrite("debug_roi_bin.png", bin_img)
         # 如果识别到目标文字，就执行点击
         if keyword in text:
-            self.click_at_without_hover(click_coords[0], click_coords[1])
+            self.click_at_without_hover(self.X_CONFIRM,self.Y_CONFIRM)
 
     def word_click(self):
         """
@@ -209,8 +214,9 @@ class WorldAutomation:
                 time.sleep(0.8)  # 等待页面加载
                 self.VIEW = 2
             elif self.VIEW == 2:
-                scene_bgr = self.bkgnd_full_window_screenshot()
-                self.ocr_and_click(scene_bgr, self.ROI_TEXT, self.keyword, self.click_coords)
+                # scene_bgr = self.bkgnd_full_window_screenshot()
+                # self.ocr_and_click(scene_bgr, self.ROI_TEXT, self.keyword, self.click_coords)
+                self.click_at_without_hover(self.X_CONFIRM,self.Y_CONFIRM)
 
 # 执行自动化操作
 if __name__ == "__main__":
