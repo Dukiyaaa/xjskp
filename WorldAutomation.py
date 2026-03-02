@@ -81,7 +81,8 @@ class WorldAutomation:
         self.ROI_TEAM_LEAVE_TEXT = (645, 1188, 698, 1222)
         # 进入环球战斗页面后的ROI
         self.ROI_IN_GAME_TEXT = (284, 107, 517, 142)  # 战斗页面环球救援字样
-
+        # 战斗结束后的返回ROI
+        self.ROI_GAME_OVER_RETURN_TEXT = (348, 1292, 442, 1337)  # 战斗页面环球救援字样
         # 双线程,一个线程负责连点,一个线程负责截图判断是否停止点击
         self.stop_click_event = threading.Event()  # 用来让连点线程停下来
         self.click_thread = None
@@ -97,10 +98,11 @@ class WorldAutomation:
         self.VIEW = 0
         # 鼠标点击间隔
         self._last_click_ts = 0.0
-        self._min_click_interval = 0.06  # 60ms，建议 40~120ms 之间调
+        self._min_click_interval = 0.03  # 60ms，建议 40~120ms 之间调
         # 初始化 OCR 读取器
         self.OCR_READER = easyocr.Reader(['ch_sim', 'en'], gpu=False)
-
+        # 进入组队页面后，用于判断是否需要投票OCR
+        self.check_flag = True  #
         # 获取窗口句柄
         self.HWND = win32gui.FindWindow(None, window_name)  # 获取标题为“向僵尸开炮”的窗口的句柄
         self.TEMPLATE_IMGS = {}
@@ -295,7 +297,7 @@ class WorldAutomation:
                 # 主线程负责监控：截图 + 判断是否进入“组队界面”
                 scene = self.bkgnd_full_window_screenshot()
                 # 触发条件：识别到“寰球救援-难度”
-                # 最上方难度字样
+                # 组队内，最上方难度字样
                 text, _, _ = self.ocr_text_in_roi(scene, self.ROI_TEAM_TEXT)
                 # 主页面 开始游戏字样
                 main_text, _, _ = self.ocr_text_in_roi(scene, self.ROI_START_GAME_TEXT)
@@ -305,6 +307,7 @@ class WorldAutomation:
                     print("[STATE] 已进入组队界面，停止连点")
                     self.stop_clicking()
                     time.sleep(0.5)
+                    self.check_flag = True
                     self.VIEW = 3
                 elif "开始" in main_text or "游戏" in main_text:
                     print("[STATE] 回到了主页面，停止连点")
@@ -320,19 +323,21 @@ class WorldAutomation:
             elif self.VIEW == 3:
                 # 解析难度 有时候diff会为none 待解决
                 # 进入组队页后，重新OCR（避免用到VIEW2的旧text）
-                diff = None
-                for _ in range(3):  # 重试3次
-                    scene = self.bkgnd_full_window_screenshot()
-                    text, _, _ = self.ocr_text_in_roi(scene, self.ROI_TEAM_TEXT)
-                    diff = self.parse_difficulty(text)
-                    print(f'[TEAM OCR] text:{text}, diff:{diff}')
-                    if diff is not None:
-                        break
-                    time.sleep(0.15)
-                if diff is None:
-                    print('[STATE] diff仍为None，可能ROI偏了/画面未稳定，回到主页重来')
-                    self.VIEW = 0
-                    continue
+                if self.check_flag:
+                    self.check_flag = False
+                    diff = None
+                    for _ in range(3):  # 重试3次
+                        scene = self.bkgnd_full_window_screenshot()
+                        text, _, _ = self.ocr_text_in_roi(scene, self.ROI_TEAM_TEXT)
+                        diff = self.parse_difficulty(text)
+                        print(f'[TEAM OCR] text:{text}, diff:{diff}')
+                        if diff is not None:
+                            break
+                        time.sleep(0.15)
+                    if diff is None:
+                        print('[STATE] diff仍为None，可能ROI偏了/画面未稳定，回到主页重来')
+                        self.VIEW = 0
+                        continue
                 # text = ''
                 # 低于期望等级直接退出队伍
                 if diff < int(self.EXPECT_DIFF):
@@ -351,7 +356,7 @@ class WorldAutomation:
                     main_text, _, _ = self.ocr_text_in_roi(scene, self.ROI_START_GAME_TEXT)
                     game_text, _, _ = self.ocr_text_in_roi(scene, self.ROI_IN_GAME_TEXT)
                     team_leave_text, _, _ = self.ocr_text_in_roi(scene, self.ROI_TEAM_LEAVE_TEXT)
-                    print(f'main_text: {main_text},game_text: {game_text},team_leave_text: {team_leave_text}')
+                    # print(f'[DEBUG] main_text: {main_text},game_text: {game_text},team_leave_text: {team_leave_text}')
                     # 3.没来得及退出队长就开了
                     if "救援" in game_text:
                         print(f'[STATE] 没来的及退出，游戏开始了')
@@ -367,7 +372,7 @@ class WorldAutomation:
                     # 游戏内，顶部环球字样
                     game_text, _, _ = self.ocr_text_in_roi(scene, self.ROI_IN_GAME_TEXT)
                     team_leave_text, _, _ = self.ocr_text_in_roi(scene, self.ROI_TEAM_LEAVE_TEXT)
-                    print(f'main_text: {main_text},game_text: {game_text},team_leave_text: {team_leave_text}')
+                    # print(f'[DEBUG]main_text: {main_text},game_text: {game_text},team_leave_text: {team_leave_text}')
                     if "救援" in game_text:
                         print(f'[STATE] 房主已开启游戏，祝你胜利')
                         self.stop_clicking()
@@ -386,13 +391,31 @@ class WorldAutomation:
                             self.VIEW = 0
                     else:
                         print('[STATE] 等待房主开启游戏中')
+                    time.sleep(1)
             elif self.VIEW == 4:
                 time.sleep(1.0)
                 scene = self.bkgnd_full_window_screenshot()
-                main_text, _, _ = self.ocr_text_in_roi(scene, self.ROI_START_GAME_TEXT)
-                if "开始" in main_text or "游戏" in main_text:
+                return_text, _, _ = self.ocr_text_in_roi(scene, self.ROI_GAME_OVER_RETURN_TEXT)
+                print(f'[DEBUG] return_text:{return_text}')
+                if "返" in return_text:
                     print("[STATE] 战斗结束，回到主页面，继续循环")
-                    self.VIEW = 0
+                    self.click_at_without_hover(394, 1307)
+                    time.sleep(2)
+                    scene = self.bkgnd_full_window_screenshot()
+                    # 组队内，最上方难度字样
+                    text, _, _ = self.ocr_text_in_roi(scene, self.ROI_TEAM_TEXT)
+                    # 主页
+                    main_text, _, _ = self.ocr_text_in_roi(scene, self.ROI_START_GAME_TEXT)
+                    if "开始" in main_text or "游戏" in main_text:
+                        print("[STATE] 已自动退回到主页面")
+                        self.VIEW = 0
+                    elif "救援" in text:
+                        print("[STATE] 已自动退回到组队页面")
+                        self.click_at_without_hover(81, 1411)
+                        time.sleep(0.2)
+                        self.click_at_without_hover(526, 928)
+                        time.sleep(0.8)
+                        self.VIEW = 0
                 else:
                     print("[STATE] 战斗进行中...")
 
