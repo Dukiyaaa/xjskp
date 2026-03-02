@@ -23,6 +23,16 @@ import re
 # ---------------------- 环球抢票类，包含抢票、判断等级、退出队伍 ----------------------
 class WorldAutomation:
     def __init__(self, window_name="向僵尸开炮"):
+        # --- GUI/控制用：运行开关 + 工作线程占位 ---
+        self.run_event = threading.Event()
+        self.worker_thread = None
+
+        # --- GUI 可选回调：日志/计数 ---
+        self.log_cb = None
+        self.counter_cb = None
+
+        # 用于计数打了多少把环
+        self.test_cnt = 0
         # 游戏窗口位置和大小
         self.X_POS = 0
         self.Y_POS = 0
@@ -60,29 +70,86 @@ class WorldAutomation:
                          int(self.HEIGHT * 2 * self.ROI_Y2_C))
 
         # 此处需要规范组队界面退出组队的按钮相对坐标比例
-        # self.ROI_TEAM_X1_C = 0.258
-        # self.ROI_TEAM_Y1_C = 0.221
-        # self.ROI_TEAM_X2_C = 0.421
-        # self.ROI_TEAM_Y2_C = 0.162
-        # self.ROI_TEAM_X1_C = 0.2
-        # self.ROI_TEAM_Y1_C = 0.2
-        # self.ROI_TEAM_X2_C = 0.8
-        # self.ROI_TEAM_Y2_C = 0.4
-        # self.ROI_TEAM_TEXT = (int(self.WIDTH * 2 * self.ROI_TEAM_X1_C),
-        #                  int(self.HEIGHT * 2 * self.ROI_TEAM_Y1_C),
-        #                  int(self.WIDTH * 2 * self.ROI_TEAM_X2_C),
-        #                  int(self.HEIGHT * 2 * self.ROI_TEAM_Y2_C))
-        self.ROI_TEAM_TEXT = (202, 196, 610, 252)
+        self.ROI_TEAM_X1_C = 0.2525
+        self.ROI_TEAM_Y1_C = 0.131
+        self.ROI_TEAM_X2_C = 0.7625
+        self.ROI_TEAM_Y2_C = 0.168
+        self.ROI_TEAM_TEXT = (int(self.WIDTH * 2 * self.ROI_TEAM_X1_C),
+                         int(self.HEIGHT * 2 * self.ROI_TEAM_Y1_C),
+                         int(self.WIDTH * 2 * self.ROI_TEAM_X2_C),
+                         int(self.HEIGHT * 2 * self.ROI_TEAM_Y2_C))
+        # self.ROI_TEAM_TEXT = (202, 196, 610, 252)
         # 主界面 开始游戏按钮位置
-        self.ROI_START_GAME_TEXT = (288, 1186, 492, 1242) # 主页开始游戏
-        # self.ROI_START_GAME_TEXT = (269, 386, 349, 414) # 普通
-        # self.ROI_START_GAME_TEXT = (360, 1435, 433, 1478) # 战斗
+        self.ROI_START_X1_C = 0.36
+        self.ROI_START_Y1_C = 0.7907
+        self.ROI_START_X2_C = 0.615
+        self.ROI_START_Y2_C = 0.828
+
+        self.ROI_START_GAME_TEXT = (
+            int(self.WIDTH * 2 * self.ROI_START_X1_C),
+            int(self.HEIGHT * 2 * self.ROI_START_Y1_C),
+            int(self.WIDTH * 2 * self.ROI_START_X2_C),
+            int(self.HEIGHT * 2 * self.ROI_START_Y2_C),
+        )
+        # self.ROI_START_GAME_TEXT = (288, 1186, 492, 1242) # 主页开始游戏
         # 组队界面的“离开”ROI，用于判断房主是否离开
-        self.ROI_TEAM_LEAVE_TEXT = (645, 1188, 698, 1222)
-        # 进入环球战斗页面后的ROI
-        self.ROI_IN_GAME_TEXT = (284, 107, 517, 142)  # 战斗页面环球救援字样
-        # 战斗结束后的返回ROI
-        self.ROI_GAME_OVER_RETURN_TEXT = (348, 1292, 442, 1337)  # 战斗页面环球救援字样
+        self.ROI_TEAM_LEAVE_X1_C = 0.80625
+        self.ROI_TEAM_LEAVE_Y1_C = 0.792
+        self.ROI_TEAM_LEAVE_X2_C = 0.8725
+        self.ROI_TEAM_LEAVE_Y2_C = 0.8147
+
+        self.ROI_TEAM_LEAVE_TEXT = (
+            int(self.WIDTH * 2 * self.ROI_TEAM_LEAVE_X1_C),
+            int(self.HEIGHT * 2 * self.ROI_TEAM_LEAVE_Y1_C),
+            int(self.WIDTH * 2 * self.ROI_TEAM_LEAVE_X2_C),
+            int(self.HEIGHT * 2 * self.ROI_TEAM_LEAVE_Y2_C),
+        )
+        # self.ROI_TEAM_LEAVE_TEXT = (645, 1188, 698, 1222)
+        # 自己要离开队伍，需要点两次按钮
+        self.LEAVE_STEP1_X_C = 0.10125
+        self.LEAVE_STEP1_Y_C = 0.9407
+        self.LEAVE_STEP2_X_C = 0.6575
+        self.LEAVE_STEP2_Y_C = 0.6187
+        self.LEAVE_STEP1_X = int(self.WIDTH * 2 * self.LEAVE_STEP1_X_C)
+        self.LEAVE_STEP1_Y = int(self.HEIGHT * 2 * self.LEAVE_STEP1_Y_C)
+        self.LEAVE_STEP2_X = int(self.WIDTH * 2 * self.LEAVE_STEP2_X_C)
+        self.LEAVE_STEP2_Y = int(self.HEIGHT * 2 * self.LEAVE_STEP2_Y_C)
+        # self.LEAVE_STEP1_X = 81
+        # self.LEAVE_STEP1_Y = 1411
+        # self.LEAVE_STEP2_X = 526
+        # self.LEAVE_STEP2_Y = 928
+        # 战斗页面顶部“环球救援”字样 ROI
+        self.ROI_IN_GAME_X1_C = 0.355
+        self.ROI_IN_GAME_Y1_C = 0.0713
+        self.ROI_IN_GAME_X2_C = 0.64625
+        self.ROI_IN_GAME_Y2_C = 0.0947
+
+        self.ROI_IN_GAME_TEXT = (
+            int(self.WIDTH * 2 * self.ROI_IN_GAME_X1_C),
+            int(self.HEIGHT * 2 * self.ROI_IN_GAME_Y1_C),
+            int(self.WIDTH * 2 * self.ROI_IN_GAME_X2_C),
+            int(self.HEIGHT * 2 * self.ROI_IN_GAME_Y2_C),
+        )
+        # self.ROI_IN_GAME_TEXT = (284, 107, 517, 142)  # 战斗页面环球救援字样
+        # 战斗结束后的“返回”按钮 ROI
+        self.ROI_GAME_OVER_X1_C = 0.435
+        self.ROI_GAME_OVER_Y1_C = 0.8613
+        self.ROI_GAME_OVER_X2_C = 0.5525
+        self.ROI_GAME_OVER_Y2_C = 0.8913
+
+        self.ROI_GAME_OVER_RETURN_TEXT = (
+            int(self.WIDTH * 2 * self.ROI_GAME_OVER_X1_C),
+            int(self.HEIGHT * 2 * self.ROI_GAME_OVER_Y1_C),
+            int(self.WIDTH * 2 * self.ROI_GAME_OVER_X2_C),
+            int(self.HEIGHT * 2 * self.ROI_GAME_OVER_Y2_C),
+        )
+        # self.ROI_GAME_OVER_RETURN_TEXT = (348, 1292, 442, 1337)
+
+        # 返回点击按钮
+        self.GAME_OVER_CLICK_X_C = 0.49375
+        self.GAME_OVER_CLICK_Y_C = 0.8763
+        self.GAME_OVER_CLICK_X = int(self.WIDTH * 2 * self.GAME_OVER_CLICK_X_C)
+        self.GAME_OVER_CLICK_Y = int(self.HEIGHT * 2 * self.GAME_OVER_CLICK_Y_C)
         # 双线程,一个线程负责连点,一个线程负责截图判断是否停止点击
         self.stop_click_event = threading.Event()  # 用来让连点线程停下来
         self.click_thread = None
@@ -93,9 +160,9 @@ class WorldAutomation:
         # 重试次数,如果ocr持续识别不到文字,说明页面有问题,需返回首页
         self.RETRY = 0
         # 想打的最低级环
-        self.EXPECT_DIFF = 15
+        self.EXPECT_DIFF = 7
         # 状态机管理 0:主页 1:聊天框 2:招募框 3:组队页面
-        self.VIEW = 3
+        self.VIEW = 0
         # 鼠标点击间隔
         self._last_click_ts = 0.0
         self._min_click_interval = 0.035  # 60ms，建议 40~120ms 之间调
@@ -239,6 +306,8 @@ class WorldAutomation:
         if text == "":
             self.RETRY += 1
             if self.RETRY > 10:
+                self.check_flag = True
+                self.last_diff = None
                 self.VIEW = 0
                 self.RETRY = 0
                 print(f'页面可能不处于招募界面,即将返回主页')
@@ -316,6 +385,8 @@ class WorldAutomation:
                     print("[STATE] 回到了主页面，停止连点")
                     self.stop_clicking()
                     time.sleep(0.5)
+                    self.check_flag = True
+                    self.last_diff = None
                     self.VIEW = 0
                 elif "救援" in game_text:
                     print(f'[STATE] 没来的及进入下一view，游戏开始了')
@@ -339,10 +410,12 @@ class WorldAutomation:
                         time.sleep(0.15)
                     if diff is None:
                         print('[STATE] diff仍为None，回到主页重来')
-                        self.click_at_without_hover(81, 1411)
+                        self.click_at_without_hover(self.LEAVE_STEP1_X, self.LEAVE_STEP1_Y)
                         time.sleep(0.2)
-                        self.click_at_without_hover(526, 928)
+                        self.click_at_without_hover(self.LEAVE_STEP2_X, self.LEAVE_STEP2_Y)
                         time.sleep(0.8)
+                        self.check_flag = True
+                        self.last_diff = None
                         self.VIEW = 0
                         continue
                     self.last_diff = diff
@@ -352,9 +425,9 @@ class WorldAutomation:
                 if diff < int(self.EXPECT_DIFF):
                     print(f"检测环球难度:{diff},低于要求难度{self.EXPECT_DIFF}，即将退出")
                     # 此处有可能没来得及退出别人就开启了
-                    self.click_at_without_hover(81, 1411)
+                    self.click_at_without_hover(self.LEAVE_STEP1_X, self.LEAVE_STEP1_Y)
                     time.sleep(0.2)
-                    self.click_at_without_hover(526, 928)
+                    self.click_at_without_hover(self.LEAVE_STEP2_X, self.LEAVE_STEP2_Y)
                     time.sleep(0.5)
                     '''在这里判断:
                     1.低于期望等级，自己退了出去
@@ -373,6 +446,8 @@ class WorldAutomation:
                         self.VIEW = 4
                     elif "开始" in main_text or "游戏" in main_text:
                         print("[STATE] 成功退回到主页面")
+                        self.check_flag = True
+                        self.last_diff = None
                         self.VIEW = 0
                 else:
                     # 否则等待房主开启游戏
@@ -388,15 +463,17 @@ class WorldAutomation:
                         self.VIEW = 4
                     elif "开" not in team_leave_text:
                         print(f'[STATE] 队长不想打，自己退了')
-                        self.click_at_without_hover(81, 1411)
+                        self.click_at_without_hover(self.LEAVE_STEP1_X, self.LEAVE_STEP1_Y)
                         time.sleep(0.5)
-                        self.click_at_without_hover(526, 928)
+                        self.click_at_without_hover(self.LEAVE_STEP2_X, self.LEAVE_STEP2_Y)
                         time.sleep(0.5)
                         # 有时会退出到了主界面但游戏还是开始了
                         scene = self.bkgnd_full_window_screenshot()
                         main_text, _, _ = self.ocr_text_in_roi(scene, self.ROI_START_GAME_TEXT)
                         if "开始" in main_text or "游戏" in main_text:
                             print("[STATE] 已自动退回到主页面")
+                            self.check_flag = True
+                            self.last_diff = None
                             self.VIEW = 0
                     else:
                         print('[STATE] 等待房主开启游戏中')
@@ -408,7 +485,9 @@ class WorldAutomation:
                 print(f'[DEBUG] return_text:{return_text}')
                 if "返" in return_text:
                     print("[STATE] 战斗结束，回到主页面，继续循环")
-                    self.click_at_without_hover(394, 1307)
+                    self.test_cnt += 1
+                    print(f'[DEBUG] test_cnt:{self.test_cnt}')
+                    self.click_at_without_hover(self.GAME_OVER_CLICK_X, self.GAME_OVER_CLICK_Y)
                     time.sleep(2)
                     scene = self.bkgnd_full_window_screenshot()
                     # 组队内，最上方难度字样
@@ -417,13 +496,17 @@ class WorldAutomation:
                     main_text, _, _ = self.ocr_text_in_roi(scene, self.ROI_START_GAME_TEXT)
                     if "开始" in main_text or "游戏" in main_text:
                         print("[STATE] 已自动退回到主页面")
+                        self.check_flag = True
+                        self.last_diff = None
                         self.VIEW = 0
                     elif "救援" in text:
                         print("[STATE] 已自动退回到组队页面")
-                        self.click_at_without_hover(81, 1411)
+                        self.click_at_without_hover(self.LEAVE_STEP1_X, self.LEAVE_STEP1_Y)
                         time.sleep(0.2)
-                        self.click_at_without_hover(526, 928)
+                        self.click_at_without_hover(self.LEAVE_STEP2_X, self.LEAVE_STEP2_Y)
                         time.sleep(0.8)
+                        self.check_flag = True
+                        self.last_diff = None
                         self.VIEW = 0
                 else:
                     print("[STATE] 战斗进行中...")
@@ -446,9 +529,9 @@ class WorldAutomation:
                 # 2.队长不想打，自己退了，则需要自己退队返回主界面
                 elif "开" not in team_leave_text:
                     print(f'队长不想打，自己退了')
-                    self.click_at_without_hover(81, 1411)
+                    self.click_at_without_hover(self.LEAVE_STEP1_X, self.LEAVE_STEP1_Y)
                     time.sleep(0.5)
-                    self.click_at_without_hover(526, 928)
+                    self.click_at_without_hover(self.LEAVE_STEP2_X, self.LEAVE_STEP2_Y)
                     time.sleep(0.5)
                     self.VIEW = 0
                 # 3.没来得及退出队长就开了
