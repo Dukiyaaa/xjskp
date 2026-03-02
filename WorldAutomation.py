@@ -107,6 +107,7 @@ class WorldAutomation:
 
         if self.HWND == 0:
             messagebox.showinfo("错误", "未找到标题为“向僵尸开炮”的窗口")
+            raise SystemExit(1)
         else:
             win32gui.MoveWindow(self.HWND, self.X_POS, self.Y_POS, self.WIDTH, self.HEIGHT, True)
 
@@ -123,9 +124,7 @@ class WorldAutomation:
         # if win32gui.IsIconic(self.HWND):
         #     win32gui.ShowWindow(self.HWND, win32con.SW_RESTORE)
         #     time.sleep(0.2)  # 给一点点时间让窗口重绘/恢复
-
         windll.user32.SetProcessDPIAware()  # 抑制系统缩放
-
         rect = win32gui.GetClientRect(self.HWND)  # 获取窗口客户区坐标
         width, height = rect[2] - rect[0], rect[3] - rect[1]
 
@@ -194,7 +193,7 @@ class WorldAutomation:
     def start_clicking(self):
         if self.click_thread is not None and self.click_thread.is_alive():
             return
-        print('[DEBUG]开始连点')
+        print('[DEBUG] 开始连点')
         self.stop_click_event.clear()
         self.click_thread = threading.Thread(target=self.click_loop, daemon=True)
         self.click_thread.start()
@@ -248,13 +247,19 @@ class WorldAutomation:
             self.click_at_without_hover(self.X_CONFIRM,self.Y_CONFIRM)
     # OCR字符串解析
     def parse_difficulty(self, text: str):
-        """
-        从 OCR 文本中解析出难度数字
-        例如：'寰球救援-难度2' -> 2
-        """
-        match = re.search(r"(\d+)\D*$", text)
-        if match:
-            return int(match.group(1))
+        if not text:
+            return None
+        t = re.sub(r"\s+", "", text)  # 去空白
+
+        # 1) 优先找 “难度X”
+        m = re.search(r"难度\D*(\d+)", t)
+        if m:
+            return int(m.group(1))
+
+        # 2) 退化：抓所有数字，取最后一个
+        nums = re.findall(r"\d+", t)
+        if nums:
+            return int(nums[-1])
         return None
 
 # ---------------------- 主程序 ---------------------
@@ -308,15 +313,24 @@ class WorldAutomation:
                     self.VIEW = 0
                 elif "救援" in game_text:
                     print(f'[STATE] 没来的及进入下一view，游戏开始了')
+                    self.stop_clicking()
                     self.VIEW = 4
                 time.sleep(0.05)  # 监控节流
             # 组队页面
             elif self.VIEW == 3:
                 # 解析难度 有时候diff会为none 待解决
-                diff = self.parse_difficulty(text)
-                print(f'text:{text}, diff: {diff}')
-                if diff == None:
-                    print('[STATE] diff为None')
+                # 进入组队页后，重新OCR（避免用到VIEW2的旧text）
+                diff = None
+                for _ in range(3):  # 重试3次
+                    scene = self.bkgnd_full_window_screenshot()
+                    text, _, _ = self.ocr_text_in_roi(scene, self.ROI_TEAM_TEXT)
+                    diff = self.parse_difficulty(text)
+                    print(f'[TEAM OCR] text:{text}, diff:{diff}')
+                    if diff is not None:
+                        break
+                    time.sleep(0.15)
+                if diff is None:
+                    print('[STATE] diff仍为None，可能ROI偏了/画面未稳定，回到主页重来')
                     self.VIEW = 0
                     continue
                 # text = ''
@@ -325,7 +339,7 @@ class WorldAutomation:
                     print(f"检测环球难度:{diff},低于要求难度{self.EXPECT_DIFF}，即将退出")
                     # 此处有可能没来得及退出别人就开启了
                     self.click_at_without_hover(81, 1411)
-                    time.sleep(0.5)
+                    time.sleep(0.2)
                     self.click_at_without_hover(526, 928)
                     time.sleep(0.8)
                     '''在这里判断:
@@ -341,6 +355,7 @@ class WorldAutomation:
                     # 3.没来得及退出队长就开了
                     if "救援" in game_text:
                         print(f'[STATE] 没来的及退出，游戏开始了')
+                        self.stop_clicking()
                         self.VIEW = 4
                     elif "开始" in main_text or "游戏" in main_text:
                         print("[STATE] 成功退回到主页面")
@@ -355,6 +370,7 @@ class WorldAutomation:
                     print(f'main_text: {main_text},game_text: {game_text},team_leave_text: {team_leave_text}')
                     if "救援" in game_text:
                         print(f'[STATE] 房主已开启游戏，祝你胜利')
+                        self.stop_clicking()
                         self.VIEW = 4
                     elif "开" not in team_leave_text:
                         print(f'[STATE] 队长不想打，自己退了')
@@ -371,7 +387,15 @@ class WorldAutomation:
                     else:
                         print('[STATE] 等待房主开启游戏中')
             elif self.VIEW == 4:
-                print('[STATE] 战斗进行中')
+                time.sleep(1.0)
+                scene = self.bkgnd_full_window_screenshot()
+                main_text, _, _ = self.ocr_text_in_roi(scene, self.ROI_START_GAME_TEXT)
+                if "开始" in main_text or "游戏" in main_text:
+                    print("[STATE] 战斗结束，回到主页面，继续循环")
+                    self.VIEW = 0
+                else:
+                    print("[STATE] 战斗进行中...")
+
             # 测试分支
             elif self.VIEW == 5:
                 '''在这里判断:
