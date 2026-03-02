@@ -93,16 +93,18 @@ class WorldAutomation:
         # 重试次数,如果ocr持续识别不到文字,说明页面有问题,需返回首页
         self.RETRY = 0
         # 想打的最低级环
-        self.EXPECT_DIFF = 5
+        self.EXPECT_DIFF = 15
         # 状态机管理 0:主页 1:聊天框 2:招募框 3:组队页面
-        self.VIEW = 0
+        self.VIEW = 3
         # 鼠标点击间隔
         self._last_click_ts = 0.0
-        self._min_click_interval = 0.03  # 60ms，建议 40~120ms 之间调
+        self._min_click_interval = 0.035  # 60ms，建议 40~120ms 之间调
         # 初始化 OCR 读取器
         self.OCR_READER = easyocr.Reader(['ch_sim', 'en'], gpu=False)
         # 进入组队页面后，用于判断是否需要投票OCR
-        self.check_flag = True  #
+        self.check_flag = True
+        # 存储难度值
+        self.last_diff = None
         # 获取窗口句柄
         self.HWND = win32gui.FindWindow(None, window_name)  # 获取标题为“向僵尸开炮”的窗口的句柄
         self.TEMPLATE_IMGS = {}
@@ -308,6 +310,7 @@ class WorldAutomation:
                     self.stop_clicking()
                     time.sleep(0.5)
                     self.check_flag = True
+                    self.last_diff = None
                     self.VIEW = 3
                 elif "开始" in main_text or "游戏" in main_text:
                     print("[STATE] 回到了主页面，停止连点")
@@ -322,11 +325,11 @@ class WorldAutomation:
             # 组队页面
             elif self.VIEW == 3:
                 # 解析难度 有时候diff会为none 待解决
-                # 进入组队页后，重新OCR（避免用到VIEW2的旧text）
-                if self.check_flag:
+                # 只在刚进组队页面时识别一次难度，并缓存
+                if self.check_flag or self.last_diff is None:
                     self.check_flag = False
                     diff = None
-                    for _ in range(3):  # 重试3次
+                    for _ in range(3):
                         scene = self.bkgnd_full_window_screenshot()
                         text, _, _ = self.ocr_text_in_roi(scene, self.ROI_TEAM_TEXT)
                         diff = self.parse_difficulty(text)
@@ -335,9 +338,15 @@ class WorldAutomation:
                             break
                         time.sleep(0.15)
                     if diff is None:
-                        print('[STATE] diff仍为None，可能ROI偏了/画面未稳定，回到主页重来')
+                        print('[STATE] diff仍为None，回到主页重来')
+                        self.click_at_without_hover(81, 1411)
+                        time.sleep(0.2)
+                        self.click_at_without_hover(526, 928)
+                        time.sleep(0.8)
                         self.VIEW = 0
                         continue
+                    self.last_diff = diff
+                diff = self.last_diff  # 后续循环都用缓存值
                 # text = ''
                 # 低于期望等级直接退出队伍
                 if diff < int(self.EXPECT_DIFF):
@@ -346,7 +355,7 @@ class WorldAutomation:
                     self.click_at_without_hover(81, 1411)
                     time.sleep(0.2)
                     self.click_at_without_hover(526, 928)
-                    time.sleep(0.8)
+                    time.sleep(0.5)
                     '''在这里判断:
                     1.低于期望等级，自己退了出去
                     2.队长不想打，自己退了
