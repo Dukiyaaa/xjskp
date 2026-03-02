@@ -18,6 +18,7 @@ import sys
 from ctypes import windll
 import random
 import easyocr
+import re
 
 
 class WorldAutomation:
@@ -25,8 +26,8 @@ class WorldAutomation:
         # 游戏窗口位置和大小
         self.X_POS = 0
         self.Y_POS = 0
-        self.WIDTH = 500
-        self.HEIGHT = 900
+        self.WIDTH = 400
+        self.HEIGHT = 750
 
         # 游戏界面固定按钮坐标
         # 聊天框全局相对坐标
@@ -48,7 +49,7 @@ class WorldAutomation:
         self.Y_CONFIRM = int(self.HEIGHT * 2 * self.Y_CONFIRM_C)
         self.click_coords = (self.X_CONFIRM, self.Y_CONFIRM)  # 确认按钮位置
 
-        # OCR关键词ROI区域
+        # OCR关键词ROI区域--招募框部分,不过目前暂时用不到了
         self.ROI_X1_C = 0.375
         self.ROI_Y1_C = 0.602
         self.ROI_X2_C = 0.5925
@@ -58,13 +59,31 @@ class WorldAutomation:
                          int(self.WIDTH * 2 * self.ROI_X2_C),
                          int(self.HEIGHT * 2 * self.ROI_Y2_C))
 
+        # self.ROI_TEAM_X1_C = 0.258
+        # self.ROI_TEAM_Y1_C = 0.221
+        # self.ROI_TEAM_X2_C = 0.421
+        # self.ROI_TEAM_Y2_C = 0.162
+        # self.ROI_TEAM_X1_C = 0.2
+        # self.ROI_TEAM_Y1_C = 0.2
+        # self.ROI_TEAM_X2_C = 0.8
+        # self.ROI_TEAM_Y2_C = 0.4
+        # self.ROI_TEAM_TEXT = (int(self.WIDTH * 2 * self.ROI_TEAM_X1_C),
+        #                  int(self.HEIGHT * 2 * self.ROI_TEAM_Y1_C),
+        #                  int(self.WIDTH * 2 * self.ROI_TEAM_X2_C),
+        #                  int(self.HEIGHT * 2 * self.ROI_TEAM_Y2_C))
+        self.ROI_TEAM_TEXT = (202, 196, 610, 252)
+        # 双线程,一个线程负责连点,一个线程负责截图判断是否停止点击
+        self.stop_click_event = threading.Event()  # 用来让连点线程停下来
+        self.click_thread = None
         # 抢环关键词
         self.keyword = "救援"
         # 运行状态开关
         self.IS_RUNNING = False
         # 重试次数,如果ocr持续识别不到文字,说明页面有问题,需返回首页
         self.RETRY = 0
-        # 状态机管理 0:主页 1:聊天框 2:招募框
+        # 想打的最低级环
+        self.EXPECT_DFF = 7
+        # 状态机管理 0:主页 1:聊天框 2:招募框 3:组队页面
         self.VIEW = 0
         # 鼠标点击间隔
         self._last_click_ts = 0.0
@@ -153,6 +172,25 @@ class WorldAutomation:
         win32api.PostMessage(self.HWND, win32con.WM_LBUTTONDOWN, win32con.MK_LBUTTON, lParam)
         win32api.PostMessage(self.HWND, win32con.WM_LBUTTONUP, 0, lParam)
 
+    # 连点线程
+    def click_loop(self):
+        while not self.stop_click_event.is_set():
+            self.click_at_without_hover(self.X_CONFIRM, self.Y_CONFIRM)
+            time.sleep(0.01)
+
+    def start_clicking(self):
+        if self.click_thread is not None and self.click_thread.is_alive():
+            return
+        self.stop_click_event.clear()
+        self.click_thread = threading.Thread(target=self.click_loop, daemon=True)
+        self.click_thread.start()
+
+    def stop_clicking(self):
+        self.stop_click_event.set()
+        if self.click_thread is not None:
+            self.click_thread.join()  # 不用 timeout
+            self.click_thread = None
+
     def ocr_text_in_roi(self, scene_bgr: np.ndarray, roi):
         """
         从指定的区域进行 OCR 识别，返回识别到的文本。
@@ -168,6 +206,8 @@ class WorldAutomation:
         # OCR 识别
         results = self.OCR_READER.readtext(bin_img, detail=0)  # 获取识别到的文字列表
 
+        cv.imwrite("debug_roi_crop.png", crop)
+        cv.imwrite("debug_roi_bin.png", bin_img)
         # 拼接成一个完整的字符串
         text = "".join(results)
         return text, crop, bin_img
@@ -192,31 +232,77 @@ class WorldAutomation:
         if keyword in text:
             self.click_at_without_hover(self.X_CONFIRM,self.Y_CONFIRM)
 
+    def parse_difficulty(self, text: str):
+        """
+        从 OCR 文本中解析出难度数字
+        例如：'寰球救援-难度2' -> 2
+        """
+        match = re.search(r"难度\s*(\d+)", text)
+        if match:
+            return int(match.group(1))
+        return None
+
     def word_click(self):
         """
         执行自动化的点击操作和 OCR 识别。
         """
         # 获取截图（此处假设 scene_bgr 是当前截图）
         # scene_bgr = self.bkgnd_full_window_screenshot()
+        text = ''
         while True:
+            print(f'当前view: {self.VIEW}')
             if self.VIEW == 0:
                 # 每次进入新页面前，都需要先截下图
                 scene_bgr = self.bkgnd_full_window_screenshot()
                 # 执行点击前的操作
+                time.sleep(1)
                 self.click_at(self.X_CHAT, self.Y_CHAT)
-                time.sleep(0.8)  # 等待界面稳定
+                time.sleep(1)  # 等待界面稳定
                 self.VIEW = 1
             elif self.VIEW == 1:
                 # 每次进入新页面前，都需要先截下图
                 scene_bgr = self.bkgnd_full_window_screenshot()
                 # 进入招募界面
+                time.sleep(1)
                 self.click_at(self.X_RECRUIT, self.Y_RECRUIT)
-                time.sleep(0.8)  # 等待页面加载
+                time.sleep(1)   # 等待页面加载
                 self.VIEW = 2
             elif self.VIEW == 2:
-                # scene_bgr = self.bkgnd_full_window_screenshot()
-                # self.ocr_and_click(scene_bgr, self.ROI_TEXT, self.keyword, self.click_coords)
-                self.click_at_without_hover(self.X_CONFIRM,self.Y_CONFIRM)
+                # 进入VIEW2：启动连点线程（只启动一次）
+                self.start_clicking()
+
+                # 主线程负责监控：截图 + 判断是否进入“组队界面”
+                scene = self.bkgnd_full_window_screenshot()
+
+                # 你要的触发条件：识别到“寰球救援-难度”
+                text, _, _ = self.ocr_text_in_roi(scene, self.ROI_TEAM_TEXT)
+                # print(f'text: {text}')
+                if "寰球救援" in text and "难度" in text:
+                    print("[STATE] 已进入组队界面，停止连点")
+                    self.stop_clicking()
+
+                    self.VIEW = 3
+                # else:
+                #     self.RETRY += 1
+                #     if self.RETRY > 10:
+                #         self.VIEW = 0
+                #         self.RETRY = 0
+                #         print(f'页面可能不处于组队界面,即将返回主页')
+                #         self.VIEW = 0
+
+                time.sleep(0.05)  # 监控节流
+            # 该分支用于测试
+            elif self.VIEW == 3:
+                # 解析难度
+                diff = self.parse_difficulty(text)
+                print("难度:", diff)
+
+                # 环五以下直接退出队伍
+                if diff <= self.EXPECT_DFF:
+                    self.click_at_without_hover(81, 1411)
+                    time.sleep(0.8)
+                    self.click_at_without_hover(526, 928)
+                    self.VIEW = 0
 
 # 执行自动化操作
 if __name__ == "__main__":
