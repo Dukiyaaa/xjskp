@@ -14,7 +14,12 @@ import queue
 import traceback
 import tkinter as tk
 from tkinter import ttk, messagebox
-from world_automation import WorldAutomation
+try:
+    from world_automation import WorldAutomation
+    _import_err = None
+except Exception as e:
+    WorldAutomation = None
+    _import_err = traceback.format_exc()
 
 class AppGUI:
     def __init__(self, root: tk.Tk):

@@ -8,9 +8,6 @@ import win32con
 import win32api
 import numpy as np
 import cv2 as cv
-import tkinter as tk
-from tkinter import ttk
-from tkinter import messagebox
 import threading
 import time
 import os
@@ -20,42 +17,58 @@ import random
 import re
 from template_matcher import TemplateMatcher
 
+from pathlib import Path
+def resource_path(rel_path: str) -> str:
+    """
+    rel_path: 相对“项目根目录 my_code”的路径，如 r"images\\template\\main_start_game.png"
+    - 开发环境：以 my_code 为根
+    - PyInstaller：以 sys._MEIPASS 为根
+    """
+    if hasattr(sys, "_MEIPASS"):
+        base = Path(sys._MEIPASS)
+    else:
+        # 当前文件在 my_code/modules/world_automation.py
+        # 所以项目根目录 = world_automation.py 的上一级（modules）的上一级 = my_code
+        base = Path(__file__).resolve().parent.parent
+
+    return str(base / rel_path)
+
 # ---------------------- 环球抢票类，包含抢票、判断等级、退出队伍 ----------------------
 class WorldAutomation:
     def __init__(self, window_name="向僵尸开炮"):
         # 模板路径字典，存储多个模板路径
         template_paths = {
             # 主页：开始游戏
-            "start_game": r"D:\MAIN\xjskp\my_code\images\template\main_start_game.png",
+            "start_game": resource_path(r"images\template\main_start_game.png"),
             # 主页：聊天框
-            "main_chat": r"D:\MAIN\xjskp\my_code\images\template\main_chat.png",
+            "main_chat": resource_path(r"images\template\main_chat.png"),
             # 聊天框：招募
-            "chat_recruit": r"D:\MAIN\xjskp\my_code\images\template\chat_recruit.png",
+            "chat_recruit": resource_path(r"images\template\chat_recruit.png"),
             # 组队界面：退出按钮
-            "team_exit": r"D:\MAIN\xjskp\my_code\images\template\team_exit.png",
+            "team_exit": resource_path(r"images\template\team_exit.png"),
             # 组队界面：环球救援难度
-            "world_diff_1": r"D:\MAIN\xjskp\my_code\images\template\world_diff_1.png",
-            "world_diff_2": r"D:\MAIN\xjskp\my_code\images\template\world_diff_2.png",
-            "world_diff_3": r"D:\MAIN\xjskp\my_code\images\template\world_diff_3.png",
-            "world_diff_4": r"D:\MAIN\xjskp\my_code\images\template\world_diff_4.png",
-            "world_diff_5": r"D:\MAIN\xjskp\my_code\images\template\world_diff_5.png",
-            "world_diff_6": r"D:\MAIN\xjskp\my_code\images\template\world_diff_6.png",
-            "world_diff_7": r"D:\MAIN\xjskp\my_code\images\template\world_diff_7.png",
-            "world_diff_8": r"D:\MAIN\xjskp\my_code\images\template\world_diff_8.png",
-            "world_diff_9": r"D:\MAIN\xjskp\my_code\images\template\world_diff_9.png",
-            "world_diff_10": r"D:\MAIN\xjskp\my_code\images\template\world_diff_10.png",
-            "world_diff_11": r"D:\MAIN\xjskp\my_code\images\template\world_diff_11.png",
-            "world_diff_12": r"D:\MAIN\xjskp\my_code\images\template\world_diff_12.png",
-            "world_diff_13": r"D:\MAIN\xjskp\my_code\images\template\world_diff_13.png",
-            # "world_diff_14": r"D:\MAIN\xjskp\my_code\images\template\world_diff_14.png",
-            # "world_diff_15": r"D:\MAIN\xjskp\my_code\images\template\world_diff_15.png",
-            # "recruit_button": r"D:\MAIN\xjskp\my_code\images\template\recruit_button.png",
-            "game_has_started": r"D:\MAIN\xjskp\my_code\images\template\game_has_started.png",
-            "master_left": r"D:\MAIN\xjskp\my_code\images\template\master_left.png",
-            "game_over_return": r"D:\MAIN\xjskp\my_code\images\template\game_over_return.png",
-            "invite": r"D:\MAIN\xjskp\my_code\images\template\invite.png",
-            "world_save_flag": r"D:\MAIN\xjskp\my_code\images\template\world_save_flag.png",
-            "fight": r"D:\MAIN\xjskp\my_code\images\template\fight.png"
+            "world_diff_1": resource_path(r"images\template\world_diff_1.png"),
+            "world_diff_2": resource_path(r"images\template\world_diff_2.png"),
+            "world_diff_3": resource_path(r"images\template\world_diff_3.png"),
+            "world_diff_4": resource_path(r"images\template\world_diff_4.png"),
+            "world_diff_5": resource_path(r"images\template\world_diff_5.png"),
+            "world_diff_6": resource_path(r"images\template\world_diff_6.png"),
+            "world_diff_7": resource_path(r"images\template\world_diff_7.png"),
+            "world_diff_8": resource_path(r"images\template\world_diff_8.png"),
+            "world_diff_9": resource_path(r"images\template\world_diff_9.png"),
+            "world_diff_10": resource_path(r"images\template\world_diff_10.png"),
+            "world_diff_11": resource_path(r"images\template\world_diff_11.png"),
+            "world_diff_12": resource_path(r"images\template\world_diff_12.png"),
+            "world_diff_13": resource_path(r"images\template\world_diff_13.png"),
+            # "world_diff_14": resource_path(r"images\template\world_diff_14.png"),
+            # "world_diff_15": resource_path(r"images\template\world_diff_15.png"),
+            # "recruit_button": resource_path(r"images\template\recruit_button.png"),
+            "game_has_started": resource_path(r"images\template\game_has_started.png"),
+            "master_left": resource_path(r"images\template\master_left.png"),
+            "game_over_return": resource_path(r"images\template\game_over_return.png"),
+            "invite": resource_path(r"images\template\invite.png"),
+            "world_save_flag": resource_path(r"images\template\world_save_flag.png"),
+            "fight": resource_path(r"images\template\fight.png")
             # 其他模板路径...
         }
         # 初始化模板匹配类，传入多个模板路径
@@ -209,19 +222,22 @@ class WorldAutomation:
         # self.OCR_READER = easyocr.Reader(['ch_sim', 'en'], gpu=False)
         # 进入组队页面后，用于判断是否需要判断难度
         self.diff = None
+        # 战斗日志记录
+        # --- 单局统计 ---
+        self._run_idx = 0  # 第几把（从 0 计起，开局时 +1）
+        self._game_start_ts = None  # 本局开始时间戳
+        self._game_diff = None  # 本局难度（进入战斗前记录）
         # 获取窗口句柄
         self.HWND = win32gui.FindWindow(None, window_name)  # 获取标题为“向僵尸开炮”的窗口的句柄
         self.TEMPLATE_IMGS = {}
 
         if self.HWND == 0:
-            messagebox.showinfo("错误", "未找到标题为“向僵尸开炮”的窗口")
-            raise SystemExit(1)
+            raise RuntimeError(f"未找到窗口：{window_name}（FindWindow 失败）")
         else:
             win32gui.MoveWindow(self.HWND, self.X_POS, self.Y_POS, self.WIDTH, self.HEIGHT, True)
-
             if win32gui.IsIconic(self.HWND):
                 win32gui.ShowWindow(self.HWND, win32con.SW_RESTORE)
-                time.sleep(0.2)  # 给一点点时间让窗口重绘/恢复
+                time.sleep(0.2)
     # GUI日志打印
     def _log(self, msg: str):
         if self.log_cb:
@@ -251,6 +267,28 @@ class WorldAutomation:
         self.test_cnt += step
         self._log(f"[COUNTER] 已完成 {self.test_cnt} 局")
         self._emit_counter()
+
+    def _game_begin(self, diff: int | None):
+        """记录开局信息，并打日志"""
+        self._run_idx += 1
+        self._game_start_ts = time.time()
+        self._game_diff = diff
+        self._log(f"[GAME] 第{self._run_idx}把开始 | 难度={diff}")
+
+    def _game_end(self):
+        """记录结束信息，并打日志"""
+        if self._game_start_ts is None:
+            # 防御：如果没记录开局就结束了
+            self._log("[GAME] 检测到结束，但未记录开局时间（可能是中途启动/异常跳转）")
+            return
+
+        cost = time.time() - self._game_start_ts
+        diff = self._game_diff
+        self._log(f"[GAME] 第{self._run_idx}把结束 | 难度={diff} | 耗时={cost:.1f}s")
+
+        # 清空本局数据
+        self._game_start_ts = None
+        self._game_diff = None
 
     def reset_counter(self):
         self.test_cnt = 0
@@ -334,6 +372,10 @@ class WorldAutomation:
 
         self._log("[INFO] 正在停止抢环球...")
         self.run_event.clear()
+        # 如果正在战斗中被停止，输出本局已运行时间
+        if self._game_start_ts is not None:
+            cost = time.time() - self._game_start_ts
+            self._log(f"[GAME] 手动停止 | 第{self._run_idx}把进行中 | 已耗时={cost:.1f}s | 难度={self._game_diff}")
 
         # 立刻停连点，避免还在狂点
         try:
@@ -480,7 +522,7 @@ class WorldAutomation:
         # 先判断初始界面，可能不在主页，后续加这个？
         try:
             while self.run_event.is_set():
-                self._log(f'[DEBUG] 当前view: {self.VIEW}')
+                # self._log(f'[DEBUG] 当前view: {self.VIEW}')
                 if self.VIEW == 0:
                     # 为了稳定，在这个页面也要做判断，看看是不是真的回到了这个页面
                     # 每次进入新页面前，都需要先截下图
@@ -503,6 +545,7 @@ class WorldAutomation:
                         self.VIEW = 1
                     elif game_has_started_position:
                         self._log("[STATE] 实际已在战斗中")
+                        self._game_begin(self.diff)
                         self.VIEW = 4
 
                 elif self.VIEW == 1:
@@ -542,6 +585,7 @@ class WorldAutomation:
                         self.VIEW = 0
                     elif game_has_started_position:
                         self._log(f'[STATE] 没来的及进入下一view，游戏开始了')
+                        self._game_begin(self.diff)
                         self.stop_clicking()
                         self.VIEW = 4
                     time.sleep(0.05)  # 监控节流
@@ -579,6 +623,7 @@ class WorldAutomation:
                         game_has_started_position = self.find_button(scene_bgr, "game_has_started")
                         if game_has_started_position:
                             self._log(f'[STATE] 没来的及退出，游戏开始了')
+                            self._game_begin(self.diff)
                             self.stop_clicking()
                             self.VIEW = 4
                         elif start_button_position:
@@ -592,6 +637,7 @@ class WorldAutomation:
                         master_left_position = self.find_button(scene_bgr, "master_left")
                         if game_has_started_position:
                             self._log(f'[STATE] 房主已开启游戏，祝你胜利')
+                            self._game_begin(self.diff)
                             self.stop_clicking()
                             self.VIEW = 4
                         elif master_left_position:
@@ -620,6 +666,7 @@ class WorldAutomation:
                     game_over_return_position = self.find_button(scene_bgr, "game_over_return")
                     if game_over_return_position:
                         self._log("[STATE] 战斗结束，回到主页面，继续循环")
+                        self._game_end()
                         # 增加计数
                         self._inc_counter(1)
                         self.click_at_without_hover(game_over_return_position[0], game_over_return_position[1])
