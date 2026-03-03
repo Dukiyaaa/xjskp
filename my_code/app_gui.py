@@ -67,7 +67,7 @@ class AppGUI:
         header = ttk.Frame(self.root, padding=(12, 10))
         header.pack(fill="x")
 
-        ttk.Label(header, text="自动化控制台（模块化）", style="Header.TLabel").pack(side="left")
+        ttk.Label(header, text="环球抢票模块-季季如春", style="Header.TLabel").pack(side="left")
         ttk.Label(header, text="日志/计数回调已做线程安全队列转发", style="Hint.TLabel").pack(side="left", padx=12)
 
         # Notebook (Tabs)
