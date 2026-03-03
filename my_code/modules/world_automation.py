@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*- 
+# -*- coding: utf-8 -*-
 
 # 必要的库导入
 import win32gui
@@ -15,10 +15,10 @@ import sys
 from ctypes import windll
 import random
 import re
-from template_matcher import TemplateMatcher
+from template_matcher import *
 
 from pathlib import Path
-def resource_path(rel_path: str) -> str:
+'''def resource_path(rel_path: str) -> str:
     """
     rel_path: 相对“项目根目录 my_code”的路径，如 r"images\\template\\main_start_game.png"
     - 开发环境：以 my_code 为根
@@ -31,7 +31,10 @@ def resource_path(rel_path: str) -> str:
         # 所以项目根目录 = world_automation.py 的上一级（modules）的上一级 = my_code
         base = Path(__file__).resolve().parent.parent
 
-    return str(base / rel_path)
+    return str(base / rel_path)'''
+
+def resource_path(rel_path: str) -> str:
+    return os.path.join(os.path.dirname(os.path.abspath(__file__)), rel_path)
 
 # ---------------------- 环球抢票类，包含抢票、判断等级、退出队伍 ----------------------
 class WorldAutomation:
@@ -534,18 +537,18 @@ class WorldAutomation:
         # 先判断初始界面，可能不在主页，后续加这个？
         try:
             while self.run_event.is_set():
-                # self._log(f'[DEBUG] 当前view: {self.VIEW}')
+                self._log(f'[DEBUG] 当前view: {self.VIEW}')
                 if self.VIEW == 0:
                     # 为了稳定，在这个页面也要做判断，看看是不是真的回到了这个页面
                     # 每次进入新页面前，都需要先截下图
                     scene_bgr = self.bkgnd_full_window_screenshot()
                     # 使用模板匹配找“开始游戏”按钮
-
                     start_button_position = self.find_button(scene_bgr, "start_game")
                     main_chat_button_position = self.find_button(scene_bgr, "main_chat")
                     chat_recruit_button_position = self.find_button(scene_bgr, "chat_recruit")
                     fight_button_position = self.find_button(scene_bgr, "fight")
                     game_has_started_position = self.find_button(scene_bgr, "game_has_started")
+                    print(f'start_button_position: {start_button_position}, fight_button_position: {fight_button_position}, game_has_started_position: {game_has_started_position}')
                     if start_button_position and fight_button_position:
                         self._log("[STATE] 处于主页中,即将进入聊天框")
                         # 通过模板匹配找到聊天框按钮
@@ -609,18 +612,18 @@ class WorldAutomation:
                     # 每轮先截图一次，后面都用这张图来算坐标（保证一致）
                     scene_bgr = self.bkgnd_full_window_screenshot()
                     self.diff = self.get_world_diff(scene_bgr)
-                    if self.diff is None:
-                        self.RETRY += 1
-                        self._log(f"[WARN] 未识别到难度diff，RETRY={self.RETRY}")
-                        if self.RETRY >= 50:
-                            self.RETRY = 0
-                            self._log("[WARN] 连续识别失败，可能是正在进入游戏中")
-                            self.stop_clicking()
-                            # self.VIEW = 2
-                        time.sleep(0.2)
-                        continue
-                    else:
-                        self.RETRY = 0
+                    # if self.diff is None:
+                    #     self.RETRY += 1
+                    #     self._log(f"[WARN] 未识别到难度diff，RETRY={self.RETRY}")
+                    #     if self.RETRY >= 50:
+                    #         self.RETRY = 0
+                    #         self._log("[WARN] 连续识别失败，可能是正在进入游戏中")
+                    #         self.stop_clicking()
+                    #         # self.VIEW = 2
+                    #     time.sleep(0.2)
+                    #     continue
+                    # else:
+                    #     self.RETRY = 0
                     # 动态点击坐标（退队两步）
                     leave1_x, leave1_y = self._abs_xy(scene_bgr, self.LEAVE_STEP1_X_C, self.LEAVE_STEP1_Y_C)
                     leave2_x, leave2_y = self._abs_xy(scene_bgr, self.LEAVE_STEP2_X_C, self.LEAVE_STEP2_Y_C)

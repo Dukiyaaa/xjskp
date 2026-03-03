@@ -15,7 +15,7 @@ import traceback
 import tkinter as tk
 from tkinter import ttk, messagebox
 try:
-    from world_automation import WorldAutomation
+    from world_automation import *
     _import_err = None
 except Exception as e:
     WorldAutomation = None
@@ -345,7 +345,6 @@ def main():
     # root.tk.call('tk', 'scaling', 1.0)
     app = AppGUI(root)
     root.mainloop()
-
 
 if __name__ == "__main__":
     main()
