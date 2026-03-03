@@ -36,6 +36,9 @@ def resource_path(rel_path: str) -> str:
 # ---------------------- 环球抢票类，包含抢票、判断等级、退出队伍 ----------------------
 class WorldAutomation:
     def __init__(self, window_name="向僵尸开炮"):
+        # 用于记录每个“环球救援”任务的计数器
+        self.world_counts = {f"world_rescue_{i + 1}": 0 for i in range(20)}  # 初始化 20 个环球救援任务的计数器
+        self.world_counts_cb = None
         # 模板路径字典，存储多个模板路径
         template_paths = {
             # 主页：开始游戏
@@ -268,6 +271,15 @@ class WorldAutomation:
         self._log(f"[COUNTER] 已完成 {self.test_cnt} 局")
         self._emit_counter()
 
+    def _inc_world_count(self, world_number: int):
+        world_key = f"world_rescue_{world_number}"
+        if world_key in self.world_counts:
+            self.world_counts[world_key] += 1  # 增加当前任务的计数
+            self._log(f"[WORLD] 环球救援{world_number} 已打 {self.world_counts[world_key]} 次")
+            if self.world_counts_cb:  # 确保回调存在
+                self._log(f"[WORLD] 更新计数：{self.world_counts}")
+                self.world_counts_cb(self.world_counts)  # 传递整个字典
+
     def _game_begin(self, diff: int | None):
         """记录开局信息，并打日志"""
         self._run_idx += 1
@@ -309,24 +321,24 @@ class WorldAutomation:
             return center_x, center_y
         return None
     # ===================== GUI友好：对外控制接口（第1步） =====================
-    def set_callbacks(self, log_cb=None, counter_cb=None):
-        """GUI可以传入回调；不传就走print。"""
+    def set_callbacks(self, log_cb=None, counter_cb=None, world_counts_cb=None):
         self.log_cb = log_cb
-        self.counter_cb = counter_cb
+        self.counter_cb = counter_cb  # 完成局数 int
+        self.world_counts_cb = world_counts_cb  # 环球救援 dict
 
-    def start(self, expect_diff: int = None, log_cb=None, counter_cb=None):
+    def start(self, expect_diff: int = None, log_cb=None, counter_cb=None, world_counts_cb=None):
         """
         启动抢环球（非阻塞）：内部开线程跑 word_click()
         - expect_diff: 设定最低难度
-        - log_cb/counter_cb: GUI回调（可选）
+        - log_cb/counter_cb/world_counts_cb: GUI回调（可选）
         """
         # 已经在跑就不重复启动
         if self.worker_thread is not None and self.worker_thread.is_alive():
             self._log("[WARN] WorldAutomation 已在运行中，忽略重复 start()")
             return
 
-        if log_cb is not None or counter_cb is not None:
-            self.set_callbacks(log_cb=log_cb, counter_cb=counter_cb)
+        if log_cb is not None or counter_cb is not None or world_counts_cb is not None:
+            self.set_callbacks(log_cb=log_cb, counter_cb=counter_cb, world_counts_cb=world_counts_cb)
 
         if expect_diff is not None:
             try:
@@ -586,6 +598,8 @@ class WorldAutomation:
                     elif game_has_started_position:
                         self._log(f'[STATE] 没来的及进入下一view，游戏开始了')
                         self._game_begin(self.diff)
+                        if self.diff:
+                            self._inc_world_count(self.diff)
                         self.stop_clicking()
                         self.VIEW = 4
                     time.sleep(0.05)  # 监控节流
@@ -624,6 +638,8 @@ class WorldAutomation:
                         if game_has_started_position:
                             self._log(f'[STATE] 没来的及退出，游戏开始了')
                             self._game_begin(self.diff)
+                            if self.diff:
+                                self._inc_world_count(self.diff)
                             self.stop_clicking()
                             self.VIEW = 4
                         elif start_button_position:
@@ -638,6 +654,8 @@ class WorldAutomation:
                         if game_has_started_position:
                             self._log(f'[STATE] 房主已开启游戏，祝你胜利')
                             self._game_begin(self.diff)
+                            if self.diff:
+                                self._inc_world_count(self.diff)
                             self.stop_clicking()
                             self.VIEW = 4
                         elif master_left_position:

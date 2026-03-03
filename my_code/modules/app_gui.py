@@ -135,14 +135,24 @@ class AppGUI:
         grp2 = ttk.LabelFrame(left, text="状态", padding=10)
         grp2.pack(fill="x", pady=(12, 0))
 
+        # 0) 完成局数
         ttk.Label(grp2, text="完成局数：").grid(row=0, column=0, sticky="w")
         self.var_counter = tk.StringVar(value="0")
-        self.lbl_counter = ttk.Label(grp2, textvariable=self.var_counter, font=("Consolas", 14, "bold"))
-        self.lbl_counter.grid(row=0, column=1, sticky="w")
+        ttk.Label(grp2, textvariable=self.var_counter, font=("Consolas", 14, "bold")).grid(row=0, column=1, sticky="w")
 
+        # 1) 运行状态
         self.var_running = tk.StringVar(value="未运行")
         ttk.Label(grp2, text="运行状态：").grid(row=1, column=0, sticky="w", pady=(8, 0))
         ttk.Label(grp2, textvariable=self.var_running).grid(row=1, column=1, sticky="w", pady=(8, 0))
+
+        # # 2) 环球救援计数（从 row=2 开始）
+        # self.var_world_counts = {}
+        # for i in range(1, 21):
+        #     r = i + 1  # i=1 -> row=2
+        #     ttk.Label(grp2, text=f"环球救援{i}:").grid(row=r, column=0, sticky="w", pady=(6, 0))
+        #     self.var_world_counts[f"world_rescue_{i}"] = tk.StringVar(value="0")
+        #     ttk.Label(grp2, textvariable=self.var_world_counts[f"world_rescue_{i}"],
+        #               font=("Consolas", 14, "bold")).grid(row=r, column=1, sticky="w", pady=(6, 0))
 
         # ---- Log box ----
         log_grp = ttk.LabelFrame(right, text="日志输出", padding=10)
@@ -190,9 +200,13 @@ class AppGUI:
         self.msg_queue.put((level, msg))
 
     def counter_cb(self, cnt: int):
-        """Worker thread safe: push counter update."""
+        """完成局数（int）"""
         self.msg_queue.put(("COUNTER", str(cnt)))
 
+    def world_counts_cb(self, world_counts: dict):
+        """ 环球救援统计（dict） """
+        self.msg_queue.put(("WORLD_COUNTS", world_counts))
+        self._push_log("DEBUG", f"[GUI] 接收到 WORLD_COUNTS 更新: {world_counts}")  # 调试信息
     # ---------------- Queue polling (GUI thread) ----------------
     def _poll_queue(self):
         try:
@@ -200,6 +214,12 @@ class AppGUI:
                 kind, payload = self.msg_queue.get_nowait()
                 if kind == "COUNTER":
                     self.var_counter.set(payload)
+                elif kind == "WORLD_COUNTS":
+                    wc = payload  # dict
+                    self._push_log("DEBUG", f"[GUI] 更新 WORLD_COUNTS: {wc}")  # 调试信息
+                    for key, val in wc.items():
+                        if key in self.var_world_counts:
+                            self.var_world_counts[key].set(str(val))
                 else:
                     self._append_log(kind, payload)
         except queue.Empty:
