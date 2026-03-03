@@ -14,7 +14,7 @@ import queue
 import traceback
 import tkinter as tk
 from tkinter import ttk, messagebox
-from modules.world_automation import WorldAutomation
+from world_automation import WorldAutomation
 
 class AppGUI:
     def __init__(self, root: tk.Tk):

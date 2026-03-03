@@ -17,12 +17,50 @@ import os
 import sys
 from ctypes import windll
 import random
-import easyocr
 import re
+from template_matcher import TemplateMatcher
 
 # ---------------------- 环球抢票类，包含抢票、判断等级、退出队伍 ----------------------
 class WorldAutomation:
     def __init__(self, window_name="向僵尸开炮"):
+        # 模板路径字典，存储多个模板路径
+        template_paths = {
+            # 主页：开始游戏
+            "start_game": r"D:\MAIN\xjskp\my_code\images\template\main_start_game.png",
+            # 主页：聊天框
+            "main_chat": r"D:\MAIN\xjskp\my_code\images\template\main_chat.png",
+            # 聊天框：招募
+            "chat_recruit": r"D:\MAIN\xjskp\my_code\images\template\chat_recruit.png",
+            # 组队界面：退出按钮
+            "team_exit": r"D:\MAIN\xjskp\my_code\images\template\team_exit.png",
+            # 组队界面：环球救援难度
+            "world_diff_1": r"D:\MAIN\xjskp\my_code\images\template\world_diff_1.png",
+            "world_diff_2": r"D:\MAIN\xjskp\my_code\images\template\world_diff_2.png",
+            "world_diff_3": r"D:\MAIN\xjskp\my_code\images\template\world_diff_3.png",
+            "world_diff_4": r"D:\MAIN\xjskp\my_code\images\template\world_diff_4.png",
+            "world_diff_5": r"D:\MAIN\xjskp\my_code\images\template\world_diff_5.png",
+            "world_diff_6": r"D:\MAIN\xjskp\my_code\images\template\world_diff_6.png",
+            "world_diff_7": r"D:\MAIN\xjskp\my_code\images\template\world_diff_7.png",
+            "world_diff_8": r"D:\MAIN\xjskp\my_code\images\template\world_diff_8.png",
+            "world_diff_9": r"D:\MAIN\xjskp\my_code\images\template\world_diff_9.png",
+            "world_diff_10": r"D:\MAIN\xjskp\my_code\images\template\world_diff_10.png",
+            "world_diff_11": r"D:\MAIN\xjskp\my_code\images\template\world_diff_11.png",
+            "world_diff_12": r"D:\MAIN\xjskp\my_code\images\template\world_diff_12.png",
+            "world_diff_13": r"D:\MAIN\xjskp\my_code\images\template\world_diff_13.png",
+            # "world_diff_14": r"D:\MAIN\xjskp\my_code\images\template\world_diff_14.png",
+            # "world_diff_15": r"D:\MAIN\xjskp\my_code\images\template\world_diff_15.png",
+            # "recruit_button": r"D:\MAIN\xjskp\my_code\images\template\recruit_button.png",
+            "game_has_started": r"D:\MAIN\xjskp\my_code\images\template\game_has_started.png",
+            "master_left": r"D:\MAIN\xjskp\my_code\images\template\master_left.png",
+            "game_over_return": r"D:\MAIN\xjskp\my_code\images\template\game_over_return.png",
+            "invite": r"D:\MAIN\xjskp\my_code\images\template\invite.png",
+            "world_save_flag": r"D:\MAIN\xjskp\my_code\images\template\world_save_flag.png",
+            "fight": r"D:\MAIN\xjskp\my_code\images\template\fight.png"
+            # 其他模板路径...
+        }
+        # 初始化模板匹配类，传入多个模板路径
+        self.template_matcher = TemplateMatcher(template_paths)
+
         # --- GUI/控制用：运行开关 + 工作线程占位 ---
         self._confirm_xy = None
         self.run_event = threading.Event()
@@ -168,11 +206,9 @@ class WorldAutomation:
         self._last_click_ts = 0.0
         self._min_click_interval = 0.035  # 60ms，建议 40~120ms 之间调
         # 初始化 OCR 读取器
-        self.OCR_READER = easyocr.Reader(['ch_sim', 'en'], gpu=False)
-        # 进入组队页面后，用于判断是否需要投票OCR
-        self.check_flag = True
-        # 存储难度值
-        self.last_diff = None
+        # self.OCR_READER = easyocr.Reader(['ch_sim', 'en'], gpu=False)
+        # 进入组队页面后，用于判断是否需要判断难度
+        self.diff = None
         # 获取窗口句柄
         self.HWND = win32gui.FindWindow(None, window_name)  # 获取标题为“向僵尸开炮”的窗口的句柄
         self.TEMPLATE_IMGS = {}
@@ -193,14 +229,14 @@ class WorldAutomation:
         else:
             print(msg)
     # 相对坐标计算
-    def _abs_xy(self, scene: np.ndarray, x_c: float, y_c: float):
+    def _abs_xy(self, scene_bgr: np.ndarray, x_c: float, y_c: float):
         """把相对坐标(0~1)转换为当前截图上的绝对像素坐标"""
-        h, w = scene.shape[:2]
+        h, w = scene_bgr.shape[:2]
         return int(w * x_c), int(h * y_c)
 
-    def _abs_roi(self, scene: np.ndarray, x1_c: float, y1_c: float, x2_c: float, y2_c: float):
+    def _abs_roi(self, scene_bgr: np.ndarray, x1_c: float, y1_c: float, x2_c: float, y2_c: float):
         """把相对ROI转换为当前截图上的绝对像素ROI (x1,y1,x2,y2)"""
-        h, w = scene.shape[:2]
+        h, w = scene_bgr.shape[:2]
         return (int(w * x1_c), int(h * y1_c), int(w * x2_c), int(h * y2_c))
 
     def _emit_counter(self):
@@ -220,6 +256,20 @@ class WorldAutomation:
         self.test_cnt = 0
         self._emit_counter()
         self._log("[COUNTER] 已重置为 0")
+
+    def find_button(self, scene_bgr,template_name):
+        """
+        使用模板匹配查找按钮
+        :param scene_bgr: 截图图像
+        :param template_name: 模板名称
+        :return: 按钮位置 (x, y) 或 None
+        """
+        # 传递模板名称到模板匹配方法
+        found, score, top_left, tpl_hw = self.template_matcher.match_template(scene_bgr, template_name, threshold=0.90)
+        if found:
+            center_x, center_y = self.template_matcher.get_center_position(top_left, tpl_hw)
+            return center_x, center_y
+        return None
     # ===================== GUI友好：对外控制接口（第1步） =====================
     def set_callbacks(self, log_cb=None, counter_cb=None):
         """GUI可以传入回调；不传就走print。"""
@@ -251,8 +301,7 @@ class WorldAutomation:
 
         # 可选：每次开始前重置一些状态，避免上次停在半路
         self.VIEW = 0
-        self.check_flag = True
-        self.last_diff = None
+
         self.RETRY = 0
         # 计数是否要重置看你需求；这里先不动 test_cnt（你可以自己手动清零）
         # self.test_cnt = 0
@@ -393,44 +442,32 @@ class WorldAutomation:
             self.click_thread.join()  # 不用 timeout
             self.click_thread = None
 
-# ---------------------- OCR部分接口 ---------------------
-    def ocr_text_in_roi(self, scene_bgr: np.ndarray, roi):
+    def get_world_diff(self, scene_bgr):
         """
-        从指定的区域进行 OCR 识别，返回识别到的文本。
+        快速检测当前队伍的环球难度
+        :param scene_bgr: 当前截图
+        :param roi_team: ROI区域用于裁剪匹配区域
+        :return: 难度等级
         """
-        x1, y1, x2, y2 = roi
-        crop = scene_bgr[y1:y2, x1:x2]
+        max_score = 0
+        ret = None
 
-        # 预处理：增强文字
-        gray = cv.cvtColor(crop, cv.COLOR_BGR2GRAY)
-        gray = cv.resize(gray, None, fx=2.0, fy=2.0, interpolation=cv.INTER_CUBIC)  # 放大提高精度
-        _, bin_img = cv.threshold(gray, 0, 255, cv.THRESH_BINARY + cv.THRESH_OTSU)
+        for i in range(12):  # 假设有20个难度模板
+            template_name = f'world_diff_{i + 1}'  # world_diff_1.png, world_diff_2.png...
 
-        # OCR 识别
-        results = self.OCR_READER.readtext(bin_img, detail=0)  # 获取识别到的文字列表
+            # 调用模板匹配方法
+            found, score, top_left, tpl_hw = self.template_matcher.match_template(
+                scene_bgr, template_name, threshold=0.95
+            )
 
-        # cv.imwrite("debug_roi_crop.png", crop)
-        # cv.imwrite("debug_roi_bin.png", bin_img)
-        # 拼接成一个完整的字符串
-        text = "".join(results)
-        return text, crop, bin_img
-    # OCR字符串解析
-    def parse_difficulty(self, text: str):
-        if not text:
-            return None
-        t = re.sub(r"\s+", "", text)  # 去空白
+            # print(f'template_name: {template_name}, found={found}, score: {score:.3f}')
 
-        # 1) 优先找 “难度X”
-        m = re.search(r"难度\D*(\d+)", t)
-        if m:
-            return int(m.group(1))
+            # 如果找到了匹配的模板，并且分数高于当前最大分数
+            if found and score > max_score:
+                max_score = score
+                ret = i + 1  # 返回当前匹配的难度等级
 
-        # 2) 退化：抓所有数字，取最后一个
-        nums = re.findall(r"\d+", t)
-        if nums:
-            return int(nums[-1])
-        return None
-
+        return ret  # 返回匹配到的难度等级，如果没有匹配到则返回 None
 # ---------------------- 主程序 ---------------------
     def word_click(self):
         """
@@ -440,6 +477,7 @@ class WorldAutomation:
         # scene_bgr = self.bkgnd_full_window_screenshot()
         text = ''
         main_text = ''
+        # 先判断初始界面，可能不在主页，后续加这个？
         try:
             while self.run_event.is_set():
                 self._log(f'[DEBUG] 当前view: {self.VIEW}')
@@ -447,59 +485,62 @@ class WorldAutomation:
                     # 为了稳定，在这个页面也要做判断，看看是不是真的回到了这个页面
                     # 每次进入新页面前，都需要先截下图
                     scene_bgr = self.bkgnd_full_window_screenshot()
-                    # 用截图真实尺寸算坐标（不再用 self.X_CHAT/self.Y_CHAT）
-                    x_chat, y_chat = self._abs_xy(scene_bgr, self.X_CHAT_C, self.Y_CHAT_C)
-                    time.sleep(1)
-                    self.click_at(x_chat, y_chat)
-                    time.sleep(1)
-                    self.VIEW = 1
+                    # 使用模板匹配找“开始游戏”按钮
+
+                    start_button_position = self.find_button(scene_bgr, "start_game")
+                    main_chat_button_position = self.find_button(scene_bgr, "main_chat")
+                    chat_recruit_button_position = self.find_button(scene_bgr, "chat_recruit")
+                    fight_button_position = self.find_button(scene_bgr, "fight")
+                    game_has_started_position = self.find_button(scene_bgr, "game_has_started")
+                    if start_button_position and fight_button_position:
+                        self._log("[STATE] 处于主页中,即将进入聊天框")
+                        # 通过模板匹配找到聊天框按钮
+                        self.click_at(main_chat_button_position[0], main_chat_button_position[1])
+                        time.sleep(0.5)
+                        self.VIEW = 1
+                    elif chat_recruit_button_position:
+                        self._log("[STATE] 实际处于聊天框中")
+                        self.VIEW = 1
+                    elif game_has_started_position:
+                        self._log("[STATE] 实际已在战斗中")
+                        self.VIEW = 4
+
                 elif self.VIEW == 1:
                     # 每次进入新页面前，都需要先截下图
                     scene_bgr = self.bkgnd_full_window_screenshot()
-                    x_rec, y_rec = self._abs_xy(scene_bgr, self.X_RECRUIT_C, self.Y_RECRUIT_C)
-                    time.sleep(1)
-                    self.click_at(x_rec, y_rec)
-                    time.sleep(1)
-                    self.VIEW = 2
+                    chat_recruit_button_position = self.find_button(scene_bgr, "chat_recruit")
+                    if chat_recruit_button_position:
+                        # 通过模板匹配找到招募按钮
+                        self._log("[STATE] 处于聊天框中,即将进入招募页")
+                        self.click_at(chat_recruit_button_position[0], chat_recruit_button_position[1])
+                        time.sleep(0.5)
+                        self.VIEW = 2
                 elif self.VIEW == 2:
-                    # 进入VIEW2：启动连点线程（只启动一次）
-                    self.start_clicking()
                     # 主线程负责监控：截图 + 判断是否进入“组队界面”
                     scene_bgr = self.bkgnd_full_window_screenshot()
-                    # 动态算确认按钮坐标
-                    self._confirm_xy = self._abs_xy(scene_bgr, self.X_CONFIRM_C, self.Y_CONFIRM_C)
-                    # 触发条件：识别到“寰球救援-难度”
-                    # 组队内，最上方难度字样
-                    # 动态计算 ROI（将相对坐标转换为实际像素坐标）
-                    roi_team = self._abs_roi(scene_bgr, self.ROI_TEAM_X1_C, self.ROI_TEAM_Y1_C, self.ROI_TEAM_X2_C,
-                                             self.ROI_TEAM_Y2_C)
-                    roi_start_game = self._abs_roi(scene_bgr, self.ROI_START_X1_C, self.ROI_START_Y1_C,
-                                                   self.ROI_START_X2_C, self.ROI_START_Y2_C)
-                    roi_in_game = self._abs_roi(scene_bgr, self.ROI_IN_GAME_X1_C, self.ROI_IN_GAME_Y1_C,
-                                                self.ROI_IN_GAME_X2_C, self.ROI_IN_GAME_Y2_C)
-                    # OCR 识别
-                    # 组队ocr
-                    text, _, _ = self.ocr_text_in_roi(scene_bgr, roi_team)
-                    # 主页ocr
-                    main_text, _, _ = self.ocr_text_in_roi(scene_bgr, roi_start_game)
-                    # 游戏内，顶部环球字样ocr
-                    game_text, _, _ = self.ocr_text_in_roi(scene_bgr, roi_in_game)
-                    # print(f'text: {text}, main_text: {main_text}, game_text: {game_text}')
-                    if "救" in text or "援" in text:
+                    if self._confirm_xy is None:
+                        self._confirm_xy = self._abs_xy(scene_bgr, self.X_CONFIRM_C, self.Y_CONFIRM_C)
+                    # 进入VIEW2：启动连点线程（只启动一次）
+                    self.start_clicking()
+                    #不从返回键来判断是不是在队内了，而是通过顶部环球字样
+                    team_exit_button_position = self.find_button(scene_bgr, "team_exit")
+                    # 有个bug，组队界面如果刚进去别人就退了的话，也会有个开始游戏的按钮
+                    start_button_position = self.find_button(scene_bgr, "start_game")
+                    game_has_started_position = self.find_button(scene_bgr, "game_has_started")
+                    fight_button_position = self.find_button(scene_bgr, "fight")
+                    if team_exit_button_position:
                         self._log("[STATE] 已进入组队界面，停止连点")
                         self.stop_clicking()
                         time.sleep(0.5)
-                        self.check_flag = True
-                        self.last_diff = None
+                        self.diff = None
                         self.VIEW = 3
-                    elif "开" in main_text or "始" in main_text or "游" in main_text or "戏" in main_text:
+                    elif start_button_position and fight_button_position:
                         self._log("[STATE] 回到了主页面，停止连点")
                         self.stop_clicking()
                         time.sleep(0.5)
-                        self.check_flag = True
-                        self.last_diff = None
+                        self.diff = None
                         self.VIEW = 0
-                    elif "救" in game_text or "援" in game_text:
+                    elif game_has_started_position:
                         self._log(f'[STATE] 没来的及进入下一view，游戏开始了')
                         self.stop_clicking()
                         self.VIEW = 4
@@ -508,166 +549,96 @@ class WorldAutomation:
                         break
                 elif self.VIEW == 3:
                     # 每轮先截图一次，后面都用这张图来算坐标（保证一致）
-                    scene = self.bkgnd_full_window_screenshot()
-                    # 动态 ROI（基于截图实际尺寸）
-                    roi_team = self._abs_roi(scene, self.ROI_TEAM_X1_C, self.ROI_TEAM_Y1_C, self.ROI_TEAM_X2_C,
-                                             self.ROI_TEAM_Y2_C)
-                    roi_start = self._abs_roi(scene, self.ROI_START_X1_C, self.ROI_START_Y1_C, self.ROI_START_X2_C,
-                                              self.ROI_START_Y2_C)
-                    roi_in_game = self._abs_roi(scene, self.ROI_IN_GAME_X1_C, self.ROI_IN_GAME_Y1_C,
-                                                self.ROI_IN_GAME_X2_C, self.ROI_IN_GAME_Y2_C)
-                    roi_team_leave = self._abs_roi(scene, self.ROI_TEAM_LEAVE_X1_C, self.ROI_TEAM_LEAVE_Y1_C,
-                                                   self.ROI_TEAM_LEAVE_X2_C, self.ROI_TEAM_LEAVE_Y2_C)
+                    scene_bgr = self.bkgnd_full_window_screenshot()
+                    self.diff = self.get_world_diff(scene_bgr)
+                    if self.diff is None:
+                        self.RETRY += 1
+                        self._log(f"[WARN] 未识别到难度diff，RETRY={self.RETRY}")
+                        if self.RETRY >= 50:
+                            self.RETRY = 0
+                            self._log("[WARN] 连续识别失败，可能是正在进入游戏中")
+                            self.stop_clicking()
+                            # self.VIEW = 2
+                        time.sleep(0.2)
+                        continue
+                    else:
+                        self.RETRY = 0
                     # 动态点击坐标（退队两步）
-                    leave1_x, leave1_y = self._abs_xy(scene, self.LEAVE_STEP1_X_C, self.LEAVE_STEP1_Y_C)
-                    leave2_x, leave2_y = self._abs_xy(scene, self.LEAVE_STEP2_X_C, self.LEAVE_STEP2_Y_C)
-                    # 只在刚进组队页面时识别一次难度，并缓存
-                    if self.check_flag or self.last_diff is None:
-                        self.check_flag = False
-                        diff = None
-                        for _ in range(3):
-                            scene = self.bkgnd_full_window_screenshot()
-                            # 重新用新截图算一次 ROI（更稳：避免窗口尺寸/截图偶发变化）
-                            roi_team = self._abs_roi(scene, self.ROI_TEAM_X1_C, self.ROI_TEAM_Y1_C, self.ROI_TEAM_X2_C,
-                                                     self.ROI_TEAM_Y2_C)
-                            text, _, _ = self.ocr_text_in_roi(scene, roi_team)
-                            diff = self.parse_difficulty(text)
-                            self._log(f'[TEAM OCR] text:{text}, diff:{diff}')
-                            if diff is not None:
-                                break
-                            time.sleep(0.15)
-                        if diff is None:
-                            self._log('[STATE] diff仍为None，回到主页重来')
-                            # 退出队伍（两步点击坐标也用动态）
-                            scene = self.bkgnd_full_window_screenshot()
-                            leave1_x, leave1_y = self._abs_xy(scene, self.LEAVE_STEP1_X_C, self.LEAVE_STEP1_Y_C)
-                            leave2_x, leave2_y = self._abs_xy(scene, self.LEAVE_STEP2_X_C, self.LEAVE_STEP2_Y_C)
-
-                            self.click_at_without_hover(leave1_x, leave1_y)
-                            time.sleep(0.2)
-                            self.click_at_without_hover(leave2_x, leave2_y)
-                            time.sleep(0.8)
-
-                            self.check_flag = True
-                            self.last_diff = None
-                            self.VIEW = 0
-                            continue
-                        self.last_diff = diff
-                    diff = self.last_diff  # 后续循环都用缓存值
-                    # 低于期望等级直接退出队伍
-                    if diff < int(self.EXPECT_DIFF):
-                        self._log(f"检测环球难度:{diff},低于要求难度{self.EXPECT_DIFF}，即将退出")
+                    leave1_x, leave1_y = self._abs_xy(scene_bgr, self.LEAVE_STEP1_X_C, self.LEAVE_STEP1_Y_C)
+                    leave2_x, leave2_y = self._abs_xy(scene_bgr, self.LEAVE_STEP2_X_C, self.LEAVE_STEP2_Y_C)
+                    if self.diff < int(self.EXPECT_DIFF):
+                        self._log(f"检测环球难度:{self.diff},低于要求难度{self.EXPECT_DIFF}，即将退出")
                         # 先尝试退出队伍
                         self.click_at_without_hover(leave1_x, leave1_y)
                         time.sleep(0.2)
                         self.click_at_without_hover(leave2_x, leave2_y)
-                        time.sleep(0.8)
+                        time.sleep(2)
                         # 判断：退回主界面 / 游戏开始 / 仍在组队
-                        scene = self.bkgnd_full_window_screenshot()
-                        roi_start = self._abs_roi(scene, self.ROI_START_X1_C, self.ROI_START_Y1_C, self.ROI_START_X2_C,
-                                                  self.ROI_START_Y2_C)
-                        roi_in_game = self._abs_roi(scene, self.ROI_IN_GAME_X1_C, self.ROI_IN_GAME_Y1_C,
-                                                    self.ROI_IN_GAME_X2_C, self.ROI_IN_GAME_Y2_C)
-                        roi_team_leave = self._abs_roi(scene, self.ROI_TEAM_LEAVE_X1_C, self.ROI_TEAM_LEAVE_Y1_C,
-                                                       self.ROI_TEAM_LEAVE_X2_C, self.ROI_TEAM_LEAVE_Y2_C)
-                        main_text, _, _ = self.ocr_text_in_roi(scene, roi_start)
-                        game_text, _, _ = self.ocr_text_in_roi(scene, roi_in_game)
-                        # team_leave_text, _, _ = self.ocr_text_in_roi(scene, roi_team_leave)
-                        if "救" in game_text or "援" in game_text:
+                        scene_bgr = self.bkgnd_full_window_screenshot()
+                        start_button_position = self.find_button(scene_bgr, "start_game")
+                        game_has_started_position = self.find_button(scene_bgr, "game_has_started")
+                        if game_has_started_position:
                             self._log(f'[STATE] 没来的及退出，游戏开始了')
                             self.stop_clicking()
                             self.VIEW = 4
-                        elif "开" in main_text or "始" in main_text or "游" in main_text or "戏" in main_text:
+                        elif start_button_position:
                             self._log("[STATE] 成功退回到主页面")
-                            self.check_flag = True
-                            self.last_diff = None
+                            self.diff = None
                             self.VIEW = 0
                     else:
                         # 否则等待房主开启游戏
-                        scene = self.bkgnd_full_window_screenshot()
-                        roi_start = self._abs_roi(scene, self.ROI_START_X1_C, self.ROI_START_Y1_C, self.ROI_START_X2_C,
-                                                  self.ROI_START_Y2_C)
-                        roi_in_game = self._abs_roi(scene, self.ROI_IN_GAME_X1_C, self.ROI_IN_GAME_Y1_C,
-                                                    self.ROI_IN_GAME_X2_C, self.ROI_IN_GAME_Y2_C)
-                        roi_team_leave = self._abs_roi(scene, self.ROI_TEAM_LEAVE_X1_C, self.ROI_TEAM_LEAVE_Y1_C,
-                                                       self.ROI_TEAM_LEAVE_X2_C, self.ROI_TEAM_LEAVE_Y2_C)
-                        main_text, _, _ = self.ocr_text_in_roi(scene, roi_start)
-                        game_text, _, _ = self.ocr_text_in_roi(scene, roi_in_game)
-                        team_leave_text, _, _ = self.ocr_text_in_roi(scene, roi_team_leave)
-                        # print(f'team_leave_text1:{team_leave_text}')
-                        if "救援" in game_text:
+                        scene_bgr = self.bkgnd_full_window_screenshot()
+                        game_has_started_position = self.find_button(scene_bgr, "game_has_started")
+                        master_left_position = self.find_button(scene_bgr, "master_left")
+                        if game_has_started_position:
                             self._log(f'[STATE] 房主已开启游戏，祝你胜利')
                             self.stop_clicking()
                             self.VIEW = 4
-                        elif "开" not in team_leave_text:
+                        elif master_left_position:
                             self._log(f'[STATE] 队长不想打，自己退了')
-                            leave1_x, leave1_y = self._abs_xy(scene, self.LEAVE_STEP1_X_C, self.LEAVE_STEP1_Y_C)
-                            leave2_x, leave2_y = self._abs_xy(scene, self.LEAVE_STEP2_X_C, self.LEAVE_STEP2_Y_C)
                             self.click_at_without_hover(leave1_x, leave1_y)
-                            time.sleep(0.5)
+                            time.sleep(0.2)
                             self.click_at_without_hover(leave2_x, leave2_y)
-                            time.sleep(0.8)
+                            time.sleep(2)
                             # 有时会退出到了主界面但游戏还是开始了
-                            scene = self.bkgnd_full_window_screenshot()
-                            roi_start = self._abs_roi(scene, self.ROI_START_X1_C, self.ROI_START_Y1_C,
-                                                      self.ROI_START_X2_C, self.ROI_START_Y2_C)
+                            scene_bgr = self.bkgnd_full_window_screenshot()
+                            start_button_position = self.find_button(scene_bgr, "start_game")
 
-                            main_text, _, _ = self.ocr_text_in_roi(scene, roi_start)
-                            if "开" in main_text or "始" in main_text or "游" in main_text or "戏" in main_text:
-                                self._log("[STATE] 已自动退回到主页面")
-                                self.check_flag = True
-                                self.last_diff = None
+                            if start_button_position:
+                                self._log("[STATE] 成功退回到主页面")
+                                self.diff = None
                                 self.VIEW = 0
                         else:
                             self._log('[STATE] 等待房主开启游戏中')
+
                         time.sleep(1)
                         if not self.run_event.is_set():
                             break
                 elif self.VIEW == 4:
                     time.sleep(1.0)
-                    scene = self.bkgnd_full_window_screenshot()
-                    # 动态计算“返回”按钮的 ROI
-                    roi_game_over_return = self._abs_roi(scene, self.ROI_GAME_OVER_X1_C,
-                                                         self.ROI_GAME_OVER_Y1_C, self.ROI_GAME_OVER_X2_C,
-                                                         self.ROI_GAME_OVER_Y2_C)
-                    # OCR 识别，判断是否显示“返回”字样
-                    return_text, _, _ = self.ocr_text_in_roi(scene, roi_game_over_return)
-                    print(f'roi_game_over_return: {roi_game_over_return},ROI_GAME_OVER_RETURN_TEXT:{self.ROI_GAME_OVER_RETURN_TEXT}')
-                    self._log(f'[DEBUG] return_text:{return_text}')
-
-                    if "返" in return_text:
+                    scene_bgr = self.bkgnd_full_window_screenshot()
+                    game_over_return_position = self.find_button(scene_bgr, "game_over_return")
+                    if game_over_return_position:
                         self._log("[STATE] 战斗结束，回到主页面，继续循环")
                         # 增加计数
                         self._inc_counter(1)
-                        # 动态计算“返回”按钮点击坐标
-                        game_over_x, game_over_y = self._abs_xy(scene, self.GAME_OVER_CLICK_X_C,
-                                                                self.GAME_OVER_CLICK_Y_C)
-                        self.click_at_without_hover(game_over_x, game_over_y)
+                        self.click_at_without_hover(game_over_return_position[0], game_over_return_position[1])
                         time.sleep(2)
 
                         # 重新截图，判断是回到主页面还是组队页面
-                        scene = self.bkgnd_full_window_screenshot()
-
-                        # 动态计算 ROI
-                        roi_team = self._abs_roi(scene, self.ROI_TEAM_X1_C, self.ROI_TEAM_Y1_C,
-                                                 self.ROI_TEAM_X2_C, self.ROI_TEAM_Y2_C)
-                        roi_start_game = self._abs_roi(scene, self.ROI_START_X1_C, self.ROI_START_Y1_C,
-                                                       self.ROI_START_X2_C, self.ROI_START_Y2_C)
-
-                        # OCR 识别文本
-                        text, _, _ = self.ocr_text_in_roi(scene, roi_team)
-                        main_text, _, _ = self.ocr_text_in_roi(scene, roi_start_game)
-
-                        if "开" in main_text or "始" in main_text or "游" in main_text or "戏" in main_text:
-                            self._log("[STATE] 已自动退回到主页面")
-                            self.check_flag = True
-                            self.last_diff = None
+                        scene_bgr = self.bkgnd_full_window_screenshot()
+                        start_button_position = self.find_button(scene_bgr, "start_game")
+                        team_exit_position  = self.find_button(scene_bgr, "team_exit")
+                        fight_button_position = self.find_button(scene_bgr, "fight")
+                        if start_button_position and fight_button_position:
+                            self._log("[STATE] 成功退回到主页面")
+                            self.diff = None
                             self.VIEW = 0
-                        elif "救援" in text:
+                        elif team_exit_position :
                             self._log("[STATE] 已自动退回到组队页面")
                             # 动态计算“离开”按钮的坐标
-                            leave1_x, leave1_y = self._abs_xy(scene, self.LEAVE_STEP1_X_C, self.LEAVE_STEP1_Y_C)
-                            leave2_x, leave2_y = self._abs_xy(scene, self.LEAVE_STEP2_X_C, self.LEAVE_STEP2_Y_C)
+                            leave1_x, leave1_y = self._abs_xy(scene_bgr, self.LEAVE_STEP1_X_C, self.LEAVE_STEP1_Y_C)
+                            leave2_x, leave2_y = self._abs_xy(scene_bgr, self.LEAVE_STEP2_X_C, self.LEAVE_STEP2_Y_C)
 
                             # 执行离开操作
                             self.click_at_without_hover(leave1_x, leave1_y)
@@ -676,38 +647,10 @@ class WorldAutomation:
                             time.sleep(0.8)
 
                             # 确保返回到主页面
-                            self.check_flag = True
-                            self.last_diff = None
+                            self.diff = None
                             self.VIEW = 0
-                    else:
-                        self._log("[STATE] 战斗进行中...")
-
-                # 测试分支
-                # elif self.VIEW == 5:
-                #     '''在这里判断:
-                #     1.低于期望等级，自己退了出去
-                #     2.队长不想打，自己退了
-                #     3.没来得及退出队长就开了'''
-                #     # 1.低于期望等级，自己退了出去
-                #     scene = self.bkgnd_full_window_screenshot()
-                #     main_text, _, _ = self.ocr_text_in_roi(scene, self.ROI_START_GAME_TEXT)
-                #     game_text, _, _ = self.ocr_text_in_roi(scene, self.ROI_IN_GAME_TEXT)
-                #     team_leave_text, _, _ = self.ocr_text_in_roi(scene, self.ROI_TEAM_LEAVE_TEXT)
-                #     self._log(f'main_text: {main_text},game_text: {game_text},team_leave_text: {team_leave_text}')
-                #     if "开始" in main_text or "游戏" in main_text:
-                #         self._log("[STATE] 已自动退回到主页面")
-                #         self.VIEW = 0
-                #     # 2.队长不想打，自己退了，则需要自己退队返回主界面
-                #     elif "开" not in team_leave_text:
-                #         self._log(f'队长不想打，自己退了')
-                #         self.click_at_without_hover(self.LEAVE_STEP1_X, self.LEAVE_STEP1_Y)
-                #         time.sleep(0.5)
-                #         self.click_at_without_hover(self.LEAVE_STEP2_X, self.LEAVE_STEP2_Y)
-                #         time.sleep(0.5)
-                #         self.VIEW = 0
-                #     # 3.没来得及退出队长就开了
-                #     elif "难度" in game_text:
-                #         break
+                    # else:
+                    #     self._log("[STATE] 战斗进行中...")
         finally:
             self.stop_clicking()  # 确保退出必停连点
 
