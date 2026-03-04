@@ -289,12 +289,12 @@ class WorldAutomation:
     def _emit_view(self, v: int):
         if self.current_page_cb:
             try:
-                print("[DEBUG] automation触发page改变")
+                self._log("[DEBUG] automation触发page改变")
                 self.current_page_cb(v)
             except Exception as e:
                 self._log(f"[VIEW_CB_ERROR] {e}")
         else:
-            print("[DEBUG] current_page_cb为None")
+            self._log("[DEBUG] current_page_cb为None")
 
     def set_view(self, v: int):
         if v == self.VIEW:
@@ -545,6 +545,39 @@ class WorldAutomation:
                 ret = i + 1  # 返回当前匹配的难度等级
 
         return ret  # 返回匹配到的难度等级，如果没有匹配到则返回 None
+
+    def detect_view(self, scene_bgr: np.ndarray) -> int:
+        """
+        返回页面编号：
+          0=主页, 1=聊天框, 2=招募页, 3=组队页, 4=战斗中
+        识别优先级：越“确定”的页面越先判（比如 战斗中/组队页）
+        """
+        # 战斗中
+        if self.find_button(scene_bgr, "game_has_started"):
+            return 4
+
+        # 组队页（有退出按钮）
+        if self.find_button(scene_bgr, "team_exit"):
+            return 3
+
+        # 招募页（能匹配到跨服）
+        if self.find_button(scene_bgr, "cross_server"):
+            # chat_recruit 在聊天框也会出现，这里按你实际 UI 调整
+            return 2
+
+        # 聊天框（能匹配到招募）
+        if self.find_button(scene_bgr, "chat_recruit"):
+            return 1
+
+        # 主页（开始游戏 + 战斗按钮同时存在更稳）
+        start_btn = self.find_button(scene_bgr, "start_game")
+        fight_btn = self.find_button(scene_bgr, "fight")
+        if start_btn and fight_btn:
+            return 0
+
+        # 兜底：识别不出来就返回当前 VIEW（不要瞎跳）
+        return self.VIEW
+
 # ---------------------- 主程序 ---------------------
     def word_click(self):
         """
@@ -556,8 +589,20 @@ class WorldAutomation:
         main_text = ''
         # 先判断初始界面，可能不在主页，后续加这个？
         try:
+            SCAN_INTERVAL = 600  # 每SCAN_INTERVAL秒进行一次巡检
+            next_scan_ts = time.monotonic() + SCAN_INTERVAL  # SCAN_INTERVAL秒后第一次巡检
             while self.run_event.is_set():
-                # self._log(f'[DEBUG] 当前view: {self.VIEW}')
+                now = time.monotonic()
+                if now >= next_scan_ts:
+                    try:
+                        scene = self.bkgnd_full_window_screenshot()
+                        v = self.detect_view(scene)
+                        self._log(f"[SCAN] 10min detect_view => {v}")
+                        self.set_view(v)
+                    except Exception as e:
+                        self._log(f"[SCAN_ERROR] {e}")
+                    next_scan_ts = now + 600
+                self._log(f'[DEBUG] 当前view: {self.VIEW}')
                 # self.current_page_cb(self.VIEW)
                 if self.VIEW == 0:
                     # 为了稳定，在这个页面也要做判断，看看是不是真的回到了这个页面
@@ -579,7 +624,7 @@ class WorldAutomation:
                     master_left_position = self.find_button(scene_bgr, "master_left")
                     # 有可能有广告跳出来
                     cancel_position = self.find_button(scene_bgr, "cancel")
-                    print(f'start_button_position: {start_button_position}, fight_button_position: {fight_button_position}, game_has_started_position: {game_has_started_position}')
+                    self._log(f'start_button_position: {start_button_position}, fight_button_position: {fight_button_position}, game_has_started_position: {game_has_started_position}')
                     # 几种情况：主页、组队、聊天框、战斗中
                     if start_button_position and fight_button_position:
                         if cancel_position:
