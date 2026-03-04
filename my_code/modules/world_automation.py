@@ -76,7 +76,8 @@ class WorldAutomation:
             "world_save_flag": resource_path(r"images\template\world_save_flag.png"),
             "fight": resource_path(r"images\template\fight.png"),
             "cancel": resource_path(r"images\template\cancel.png"),
-            "cross_server": resource_path(r"images\template\cross_server.png")
+            "cross_server": resource_path(r"images\template\cross_server.png"),
+            "upgrade_coin": resource_path(r"images\template\upgrade_coin.png")
             # 其他模板路径...
         }
         self.template_paths = template_paths
@@ -381,7 +382,7 @@ class WorldAutomation:
         self._emit_counter()
         self._log("[COUNTER] 已重置为 0")
 
-    def find_button(self, scene_bgr,template_name):
+    def find_button(self, scene_bgr, template_name):
         """
         使用模板匹配查找按钮
         :param scene_bgr: 截图图像
@@ -741,6 +742,7 @@ class WorldAutomation:
                     master_left_position = self.find_button(scene_bgr, "master_left")
                     # 有可能有广告跳出来
                     cancel_position = self.find_button(scene_bgr, "cancel")
+                    upgrade_coin_position = self.find_button(scene_bgr, "upgrade_coin")
                     self._log(f'[STATE]正在通过寻找特定元素判断当前页面,若为None说明没找到:')
                     self._log(f'[DEBUG]开始游戏按钮: {start_button_position}')
                     self._log(f'[DEBUG]底部战斗字样按钮: {fight_button_position}')
@@ -786,6 +788,12 @@ class WorldAutomation:
                         # time.sleep(0.8)
 
                         # 确保返回到主页面
+                        self.diff = None
+                        # self.VIEW = 0
+                        self.set_view(0)
+                    elif upgrade_coin_position:
+                        self._log("[STATE]检测到等级提升,需要单机一下屏幕")
+                        self.click_at_without_hover(upgrade_coin_position[0], upgrade_coin_position[1] + 100)
                         self.diff = None
                         # self.VIEW = 0
                         self.set_view(0)
