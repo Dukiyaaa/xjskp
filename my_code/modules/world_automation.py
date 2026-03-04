@@ -242,6 +242,12 @@ class WorldAutomation:
         self.TEMPLATE_IMGS = {}
         # 我电脑的截图WH
         self.BASE_W, self.BASE_H = 774, 1487
+        # 巡检
+        self.SCAN_INTERVAL = 600  # 10分钟一次巡检
+        self.SCAN_RETRY = 5  # 失败后最多重试次数
+        self.SCAN_RETRY_GAP = 3  # 重试间隔（秒）
+        self.VIEW_UNKNOWN = -1  # detect_view 识别失败时返回 -1
+
         if self.HWND == 0:
             raise RuntimeError(f"未找到窗口：{window_name}（FindWindow 失败）")
         else:
@@ -570,7 +576,7 @@ class WorldAutomation:
         if self.click_thread is not None and self.click_thread.is_alive():
             return
         # 确保确认按钮坐标已经计算出来
-        self._log(f'[STATE] 已进入招募页,即将开始连点抢票,连点期间鼠标无法手动控制')
+        self._log(f'[STATE]已进入招募页,即将开始连点抢票,连点期间鼠标无法手动控制')
         if not self._confirm_xy:
             self._log("[ERROR] _confirm_xy 未计算，等待初始化")
             return  # 跳过连点操作，直到确认按钮坐标计算完成
@@ -618,31 +624,63 @@ class WorldAutomation:
           0=主页, 1=聊天框, 2=招募页, 3=组队页, 4=战斗中
         识别优先级：越“确定”的页面越先判（比如 战斗中/组队页）
         """
+        self._log(f'[STATE]触发定时检查当前页面归属')
         # 战斗中
+        self._log(f'[STATE]查找战斗页面特征中')
         if self.find_button(scene_bgr, "game_has_started"):
+            self._log(f'[STATE]已成功查找到战斗暂停按钮,当前页面为战斗页面')
             return 4
-
+        self._log(f'[STATE]未能找到战斗页面特征,现在开始查找组队页面特征')
         # 组队页（有退出按钮）
         if self.find_button(scene_bgr, "team_exit"):
+            self._log(f'[STATE]已成功查找到组队退出按钮,当前页面为组队页面')
             return 3
-
+        self._log(f'[STATE]未能找到组队页面特征,现在开始查找招募页面特征')
         # 招募页（能匹配到跨服）
         if self.find_button(scene_bgr, "cross_server"):
-            # chat_recruit 在聊天框也会出现，这里按你实际 UI 调整
+            self._log(f'[STATE]已成功查找到招募页面特征,当前页面为招募页面')
             return 2
-
+        self._log(f'[STATE]未能找到招募页面特征,现在开始查找跨服页面特征')
         # 聊天框（能匹配到招募）
         if self.find_button(scene_bgr, "chat_recruit"):
+            self._log(f'[STATE]已成功查找到跨服页面特征,当前页面为跨服页面')
             return 1
-
+        self._log(f'[STATE]未能找到跨服页面特征,现在开始查找主页面特征')
         # 主页（开始游戏 + 战斗按钮同时存在更稳）
         start_btn = self.find_button(scene_bgr, "start_game")
         fight_btn = self.find_button(scene_bgr, "fight")
         if start_btn and fight_btn:
+            self._log(f'[STATE]已成功查找到主页面的开始游戏按钮和底部战斗图标,当前页面为主页面')
             return 0
 
         # 兜底：识别不出来就返回当前 VIEW（不要瞎跳）
-        return self.VIEW
+        self._log(f'[STATE]定时检查当前页面,未能判断出页面归属')
+        return self.VIEW_UNKNOWN
+
+    def scan_view_with_retry(self) -> int:
+        """
+        多次尝试识别页面：
+        - 成功：返回 0/1/2/3/4
+        - 全失败：返回 VIEW_UNKNOWN
+        """
+        for i in range(1, self.SCAN_RETRY + 1):
+            if not self.run_event.is_set():
+                return self.VIEW_UNKNOWN
+
+            try:
+                scene = self.bkgnd_full_window_screenshot()
+                v = self.detect_view(scene)
+                self._log(f"[SCAN] try {i}/{self.SCAN_RETRY} => {v}")
+
+                if v != self.VIEW_UNKNOWN:
+                    return v
+            except Exception as e:
+                self._log(f"[SCAN_ERROR] try {i}/{self.SCAN_RETRY}: {e}")
+
+            self._log(f"[SCAN] 未能检测出当前页面归属,将在2s后重试")
+            time.sleep(self.SCAN_RETRY_GAP)
+
+        return self.VIEW_UNKNOWN
 
 # ---------------------- 主程序 ---------------------
     def word_click(self):
@@ -661,14 +699,16 @@ class WorldAutomation:
                 now = time.monotonic()
                 if now >= next_scan_ts:
                     try:
-                        scene = self.bkgnd_full_window_screenshot()
-                        v = self.detect_view(scene)
-                        self._log(f"[SCAN] 10min detect_view => {v}")
-                        self.set_view(v)
+                        v = self.scan_view_with_retry()
+                        if v != self.VIEW_UNKNOWN:
+                            self._log(f"[SCAN] success => set_view({v})")
+                            self.set_view(v)
+                        else:
+                            self._log("[SCAN] all retries failed, keep current VIEW")
                     except Exception as e:
                         self._log(f"[SCAN_ERROR] {e}")
-                    next_scan_ts = now + 600
-                # self._log(f'[DEBUG] 当前view: {self.VIEW}')
+                    next_scan_ts = now + self.SCAN_INTERVAL
+                # self._log(f'[DEBUG]当前view: {self.VIEW}')
                 # self.current_page_cb(self.VIEW)
                 if self.VIEW == 0:
                     # 为了稳定，在这个页面也要做判断，看看是不是真的回到了这个页面
@@ -708,32 +748,32 @@ class WorldAutomation:
                     # 几种情况：主页、组队、聊天框、战斗中
                     if start_button_position and fight_button_position:
                         if cancel_position:
-                            self._log("[STATE] 有广告遮挡,准备关闭,即将自动点击右上角叉号")
+                            self._log("[STATE]有广告遮挡,准备关闭,即将自动点击右上角叉号")
                             self.click_at(cancel_position[0], cancel_position[1])
                             time.sleep(0.5)
                             scene_bgr = self.bkgnd_full_window_screenshot()
                             main_chat_button_position = self.find_button(scene_bgr, "main_chat")
-                        self._log("[STATE] 处于主页中,即将进入聊天框")
+                        self._log("[STATE]处于主页中,即将进入聊天框")
                         # 通过模板匹配找到聊天框按钮
                         self.click_at(main_chat_button_position[0], main_chat_button_position[1])
                         time.sleep(0.5)
                         # self.VIEW = 1
                         self.set_view(1)
                     elif chat_recruit_button_position:
-                        self._log("[STATE] 当前实际处于聊天框中")
+                        self._log("[STATE]当前实际处于聊天框中")
                         # self.VIEW = 1
                         self.set_view(1)
                     elif cross_server_button_position:
-                        self._log("[STATE] 当前实际处于招募页面中")
+                        self._log("[STATE]当前实际处于招募页面中")
                         # self.VIEW = 2
                         self.set_view(2)
                     elif game_has_started_position:
-                        self._log("[STATE] 当前实际已在战斗中")
+                        self._log("[STATE]当前实际已在战斗中")
                         self._game_begin(self.diff)
                         # self.VIEW = 4
                         self.set_view(4)
                     elif master_left_position:
-                        self._log("[STATE] 当前处于单人组队界面,即将点击左下角返回键退回到首页")
+                        self._log("[STATE]当前处于单人组队界面,即将点击左下角返回键退回到首页")
                         scene_bgr = self.bkgnd_full_window_screenshot()
                         # 退回到主页
                         leave1_x, leave1_y = self._abs_xy(scene_bgr, self.LEAVE_STEP1_X_C, self.LEAVE_STEP1_Y_C)
@@ -756,7 +796,7 @@ class WorldAutomation:
                     chat_recruit_button_position = self.find_button(scene_bgr, "chat_recruit")
                     if chat_recruit_button_position:
                         # 通过模板匹配找到招募按钮
-                        self._log("[STATE] 处于聊天框中,即将进入招募页,自动连点开始抢票")
+                        self._log("[STATE]处于聊天框中,即将进入招募页,自动连点开始抢票")
                         self.click_at(chat_recruit_button_position[0], chat_recruit_button_position[1])
                         time.sleep(0.5)
                         # self.VIEW = 2
@@ -776,21 +816,21 @@ class WorldAutomation:
                     game_has_started_position = self.find_button(scene_bgr, "game_has_started")
                     fight_button_position = self.find_button(scene_bgr, "fight")
                     if team_exit_button_position:
-                        self._log("[STATE] 已进入组队界面，停止连点")
+                        self._log("[STATE]已进入组队界面，停止连点")
                         self.stop_clicking()
                         time.sleep(0.5)
                         self.diff = None
                         # self.VIEW = 3
                         self.set_view(3)
                     elif start_button_position and fight_button_position:
-                        self._log("[STATE] 由于游戏bug回到了主页面，停止连点")
+                        self._log("[STATE]由于游戏bug回到了主页面，停止连点")
                         self.stop_clicking()
                         time.sleep(0.5)
                         self.diff = None
                         # self.VIEW = 0
                         self.set_view(0)
                     elif game_has_started_position:
-                        self._log(f'[STATE] 还没来得及进行环球难度判断，游戏便开始了')
+                        self._log(f'[STATE]还没来得及进行环球难度判断，游戏便开始了')
                         self._game_begin(self.diff)
                         if self.diff:
                             self._inc_world_count(self.diff)
@@ -823,8 +863,8 @@ class WorldAutomation:
                     leave1_x, leave1_y = self._abs_xy(scene_bgr, self.LEAVE_STEP1_X_C, self.LEAVE_STEP1_Y_C)
                     leave2_x, leave2_y = self._abs_xy(scene_bgr, self.LEAVE_STEP2_X_C, self.LEAVE_STEP2_Y_C)
                     if self.diff is not None and self.diff < int(self.EXPECT_DIFF):
-                        self._log(f"[STATE] 检测环球难度:{self.diff},低于要求难度{self.EXPECT_DIFF}，即将退出")
-                        self._log(f"[STATE] 当队里有两人时,退出分为两步,先点左下角退出键,再点弹窗确认")
+                        self._log(f"[STATE]检测环球难度:{self.diff},低于要求难度{self.EXPECT_DIFF}，即将退出")
+                        self._log(f"[STATE]当队里有两人时,退出分为两步,先点左下角退出键,再点弹窗确认")
                         # 先尝试退出队伍
                         self.click_at_without_hover(leave1_x, leave1_y)
                         time.sleep(0.2)
@@ -834,9 +874,9 @@ class WorldAutomation:
                         scene_bgr = self.bkgnd_full_window_screenshot()
                         start_button_position = self.find_button(scene_bgr, "start_game")
                         game_has_started_position = self.find_button(scene_bgr, "game_has_started")
-                        self._log(f'[STATE] 正在判断是否成功退出')
+                        self._log(f'[STATE]正在判断是否成功退出')
                         if game_has_started_position:
-                            self._log(f'[STATE] 没来的及退出，游戏开始了')
+                            self._log(f'[STATE]没来的及退出，游戏开始了')
                             self._game_begin(self.diff)
                             if self.diff:
                                 self._inc_world_count(self.diff)
@@ -844,19 +884,19 @@ class WorldAutomation:
                             # self.VIEW = 4
                             self.set_view(4)
                         elif start_button_position:
-                            self._log("[STATE] 成功退回到主页面")
+                            self._log("[STATE]成功退回到主页面")
                             self.diff = None
                             # self.VIEW = 0
                             self.set_view(0)
                         else:
-                            self._log(f'[STATE] 很可能没来的及退出，游戏开始了')
+                            self._log(f'[STATE]很可能没来的及退出，游戏开始了')
                     else:
                         # 否则等待房主开启游戏
                         scene_bgr = self.bkgnd_full_window_screenshot()
                         game_has_started_position = self.find_button(scene_bgr, "game_has_started")
                         master_left_position = self.find_button(scene_bgr, "master_left")
                         if game_has_started_position:
-                            self._log(f'[STATE] 房主已开启游戏，祝你胜利')
+                            self._log(f'[STATE]房主已开启游戏，祝你胜利')
                             self._game_begin(self.diff)
                             if self.diff:
                                 self._inc_world_count(self.diff)
@@ -864,8 +904,8 @@ class WorldAutomation:
                             # self.VIEW = 4
                             self.set_view(4)
                         elif master_left_position:
-                            self._log(f'[STATE] 队长不想打，自己退了,即将退出队伍到主页面')
-                            self._log(f"[STATE] 当队里只有一人时,退出只有一步,直接点击左下角退出键")
+                            self._log(f'[STATE]队长不想打，自己退了,即将退出队伍到主页面')
+                            self._log(f"[STATE]当队里只有一人时,退出只有一步,直接点击左下角退出键")
                             self.click_at_without_hover(leave1_x, leave1_y)
                             time.sleep(2)
                             # self.click_at_without_hover(leave2_x, leave2_y)
@@ -875,12 +915,12 @@ class WorldAutomation:
                             start_button_position = self.find_button(scene_bgr, "start_game")
 
                             if start_button_position:
-                                self._log("[STATE] 成功退回到主页面")
+                                self._log("[STATE]成功退回到主页面")
                                 self.diff = None
                                 # self.VIEW = 0
                                 self.set_view(0)
                         else:
-                            self._log('[STATE] 等待房主开启游戏中')
+                            self._log('[STATE]等待房主开启游戏中')
 
                         time.sleep(1)
                         if not self.run_event.is_set():
@@ -891,7 +931,7 @@ class WorldAutomation:
                     game_over_return_position = self.find_button(scene_bgr, "game_over_return")
                     if game_over_return_position:
                         time.sleep(3)
-                        self._log("[STATE] 战斗结束，回到主页面，继续循环")
+                        self._log("[STATE]战斗结束，回到主页面，继续循环")
                         self._game_end()
                         # 增加计数
                         self._inc_counter(1)
@@ -904,13 +944,13 @@ class WorldAutomation:
                         team_exit_position  = self.find_button(scene_bgr, "team_exit")
                         fight_button_position = self.find_button(scene_bgr, "fight")
                         if start_button_position and fight_button_position:
-                            self._log("[STATE] 成功退回到主页面")
+                            self._log("[STATE]成功退回到主页面")
                             self.diff = None
                             # self.VIEW = 0
                             self.set_view(0)
                         elif team_exit_position :
-                            self._log("[STATE] 已自动退回到组队页面,准备退回到主页面")
-                            self._log(f"[STATE] 当队里只有一人时,退出只有一步,直接点击左下角退出键")
+                            self._log("[STATE]已自动退回到组队页面,准备退回到主页面")
+                            self._log(f"[STATE]当队里只有一人时,退出只有一步,直接点击左下角退出键")
                             # 动态计算“离开”按钮的坐标
                             leave1_x, leave1_y = self._abs_xy(scene_bgr, self.LEAVE_STEP1_X_C, self.LEAVE_STEP1_Y_C)
                             # leave2_x, leave2_y = self._abs_xy(scene_bgr, self.LEAVE_STEP2_X_C, self.LEAVE_STEP2_Y_C)
@@ -926,7 +966,7 @@ class WorldAutomation:
                             # self.VIEW = 0
                             self.set_view(0)
                     else:
-                        # self._log("[STATE] 战斗进行中...")
+                        # self._log("[STATE]战斗进行中...")
                         # 直接一直点中间的词条？
                         self.click_at_without_hover(379, 751)
                         time.sleep(2)
@@ -936,13 +976,16 @@ class WorldAutomation:
 # 执行自动化操作
 if __name__ == "__main__":
     automation = WorldAutomation()
-    automation.debug_check_templates()
+    scene_bgr = automation.bkgnd_full_window_screenshot()
+    v = automation.detect_view(scene_bgr)
+    automation._log(f"[SCAN] 10min detect_view => {v}")
+    # automation.debug_check_templates()
     # 启动
-    automation.start(expect_diff=7)
+    # automation.start(expect_diff=7)
     # 让它跑一会儿（你也可以改成 while True）
-    try:
-        while True:
-            time.sleep(1)
-    except KeyboardInterrupt:
-        automation.stop()
-        time.sleep(0.5)  # 给线程一点点收尾时间
+    # try:
+    #     while True:
+    #         time.sleep(1)
+    # except KeyboardInterrupt:
+    #     automation.stop()
+    #     time.sleep(0.5)  # 给线程一点点收尾时间
