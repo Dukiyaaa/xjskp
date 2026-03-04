@@ -14,6 +14,9 @@ import queue
 import traceback
 import tkinter as tk
 from tkinter import ttk, messagebox
+
+from sympy.codegen.ast import String
+
 try:
     from world_automation import *
     _import_err = None
@@ -145,6 +148,12 @@ class AppGUI:
         ttk.Label(grp2, text="运行状态：").grid(row=1, column=0, sticky="w", pady=(8, 0))
         ttk.Label(grp2, textvariable=self.var_running).grid(row=1, column=1, sticky="w", pady=(8, 0))
 
+        # 2) 所处页面
+        self.var_current_page = tk.StringVar(value="主页")  # 初始值为 "主页"
+        ttk.Label(grp2, text="当前所处页面：").grid(row=2, column=0, sticky="w")
+        ttk.Label(grp2, textvariable=self.var_current_page, font=("Consolas", 14, "bold")).grid(row=2, column=1,
+                                                                                                sticky="w")
+
         # # 2) 环球救援计数（从 row=2 开始）
         # self.var_world_counts = {}
         # for i in range(1, 21):
@@ -203,6 +212,11 @@ class AppGUI:
         """完成局数（int）"""
         self.msg_queue.put(("COUNTER", str(cnt)))
 
+    def current_page_cb(self, page_num):
+        """当前页面"""
+        # 直接传递数字
+        self.msg_queue.put(("VIEW", page_num))
+
     def world_counts_cb(self, world_counts: dict):
         """ 环球救援统计（dict） """
         self.msg_queue.put(("WORLD_COUNTS", world_counts))
@@ -214,6 +228,17 @@ class AppGUI:
                 kind, payload = self.msg_queue.get_nowait()
                 if kind == "COUNTER":
                     self.var_counter.set(payload)
+                elif kind == "VIEW":
+                    print(f'[DEBUG] 页面发生变化，: {payload}')  # 这里输出页面更新的值
+                    view_map = {
+                        0: "主页",
+                        1: "聊天框",
+                        2: "招募页",
+                        3: "组队页",
+                        4: "战斗中",
+                    }
+                    page_name = view_map.get(payload, "未知页面")
+                    self.var_current_page.set(page_name)  # 将更新后的页面名称设置到 GUI
                 elif kind == "WORLD_COUNTS":
                     wc = payload  # dict
                     self._push_log("DEBUG", f"[GUI] 更新 WORLD_COUNTS: {wc}")  # 调试信息
@@ -260,7 +285,7 @@ class AppGUI:
             try:
                 self.automation = WorldAutomation(window_name=window_name)
                 # set callbacks once
-                self.automation.set_callbacks(log_cb=self.log_cb, counter_cb=self.counter_cb)
+                self.automation.set_callbacks(log_cb=self.log_cb, current_page_cb=self.current_page_cb, counter_cb=self.counter_cb)
                 self._push_log("INFO", f"[GUI] 已初始化 WorldAutomation(window_name='{window_name}')")
             except Exception as e:
                 tb = traceback.format_exc()
@@ -276,7 +301,7 @@ class AppGUI:
 
         # Start
         try:
-            self.automation.start(expect_diff=expect_diff, log_cb=self.log_cb, counter_cb=self.counter_cb)
+            self.automation.start(expect_diff=expect_diff, log_cb=self.log_cb, current_page_cb=self.current_page_cb, counter_cb=self.counter_cb)
             self.var_running.set("运行中")
             self.btn_start.configure(state="disabled")
             self.btn_stop.configure(state="normal")
