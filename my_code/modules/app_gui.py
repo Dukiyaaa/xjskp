@@ -138,11 +138,11 @@ class AppGUI:
         self.var_mid_entry_click = tk.BooleanVar(value=True)
         self.chk_mid_entry = ttk.Checkbutton(
             grp,
-            text="自动点击中间词条",
+            text="战斗时自动点击中间词条",
             variable=self.var_mid_entry_click,
             command=self.on_toggle_mid_entry_click
         )
-        self.chk_mid_entry.grid(row=4, column=0, columnspan=2, sticky="w", pady=(10, 0))
+        self.chk_mid_entry.grid(row=4, column=0, columnspan=2, sticky="we", pady=(10, 0))
 
         # Counter display
         grp2 = ttk.LabelFrame(left, text="状态", padding=10)
@@ -199,7 +199,7 @@ class AppGUI:
         ttk.Label(parent, text="这里预留做全局设置/模块管理器/调试工具。", style="Hint.TLabel").pack(anchor="w")
         ttk.Label(
             parent,
-            text="v1.5:加入中间词条选择开关;优化遇到广告时的处理方法",
+            text="v1.5:加入中间词条选择开关;优化遇到广告时的处理方法;战斗界面判定条件优化",
             style="Hint.TLabel"
         ).pack(anchor="w", pady=(6, 0))
 
