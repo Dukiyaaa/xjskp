@@ -675,7 +675,7 @@ class WorldAutomation:
             try:
                 scene = self.bkgnd_full_window_screenshot()
                 # 若有广告，先关闭广告
-                cancel_position = self.find_button(scene_bgr, "cancel")
+                cancel_position = self.find_button(scene, "cancel")
                 if cancel_position:
                     self._log("[SCAN]有广告/巡逻遮挡,准备关闭,即将自动点击右上角叉号")
                     self.click_at(cancel_position[0], cancel_position[1])
