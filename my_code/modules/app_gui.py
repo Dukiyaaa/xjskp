@@ -199,7 +199,7 @@ class AppGUI:
         ttk.Label(parent, text="这里预留做全局设置/模块管理器/调试工具。", style="Hint.TLabel").pack(anchor="w")
         ttk.Label(
             parent,
-            text="建议后续做一个 ModuleManager：统一“只能有一个模块控制窗口”，避免冲突。",
+            text="v1.5:加入中间词条选择开关;优化遇到广告时的处理方法",
             style="Hint.TLabel"
         ).pack(anchor="w", pady=(6, 0))
 
