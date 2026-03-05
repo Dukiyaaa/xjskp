@@ -15,7 +15,7 @@ import traceback
 import tkinter as tk
 from tkinter import ttk, messagebox
 
-from sympy.codegen.ast import String
+# from sympy.codegen.ast import String
 
 try:
     from world_automation import *
@@ -36,7 +36,8 @@ class AppGUI:
 
         # Module instance
         self.automation = None
-
+        self.ad_watcher = None
+        self.txt_ads_log = None
         # ---- Style ----
         self._build_style()
 
@@ -86,11 +87,15 @@ class AppGUI:
         self.tab_world = ttk.Frame(self.nb, padding=12)
         self.nb.add(self.tab_world, text="环球抢环")
 
-        # Tab: 设置/关于（占位）
+        # 新增：看广告
+        self.tab_ads = ttk.Frame(self.nb, padding=12)
+        self.nb.add(self.tab_ads, text="看广告")
+
         self.tab_about = ttk.Frame(self.nb, padding=12)
         self.nb.add(self.tab_about, text="设置/关于")
 
         self._build_world_tab(self.tab_world)
+        self._build_ads_tab(self.tab_ads)
         self._build_about_tab(self.tab_about)
 
     def _build_world_tab(self, parent: ttk.Frame):
@@ -195,6 +200,70 @@ class AppGUI:
         ttk.Button(bottom, text="清空日志", command=self.on_clear_log).pack(side="left")
         ttk.Button(bottom, text="复制日志", command=self.on_copy_log).pack(side="left", padx=8)
 
+    def _build_ads_tab(self, parent: ttk.Frame):
+        left = ttk.Frame(parent)
+        left.pack(side="left", fill="y", padx=(0, 12))
+
+        right = ttk.Frame(parent)
+        right.pack(side="right", fill="both", expand=True)
+
+        grp = ttk.LabelFrame(left, text="广告模块控制", padding=10)
+        grp.pack(fill="x")
+
+        # 体力广告：轮数/冷却
+        ttk.Label(grp, text="体力广告轮数 max_rounds").grid(row=0, column=0, sticky="w", pady=(0, 6))
+        self.var_ads_power_rounds = tk.StringVar(value="30")
+        ttk.Entry(grp, textvariable=self.var_ads_power_rounds, width=18).grid(row=0, column=1, sticky="w", pady=(0, 6))
+
+        ttk.Label(grp, text="冷却 cooldown(秒)").grid(row=1, column=0, sticky="w", pady=(0, 6))
+        self.var_ads_power_cooldown = tk.StringVar(value="300")
+        ttk.Entry(grp, textvariable=self.var_ads_power_cooldown, width=18).grid(row=1, column=1, sticky="w",
+                                                                                pady=(0, 6))
+
+        btn_row = ttk.Frame(grp)
+        btn_row.grid(row=2, column=0, columnspan=2, sticky="we", pady=(10, 0))
+        btn_row.columnconfigure(0, weight=1)
+        btn_row.columnconfigure(1, weight=1)
+
+        self.btn_ads_power_start = ttk.Button(btn_row, text="启动体力广告", command=self.on_ads_power_start,
+                                              state="disabled")
+        self.btn_ads_power_start.grid(row=0, column=0, sticky="we", padx=(0, 6))
+
+        self.btn_ads_power_stop = ttk.Button(btn_row, text="停止体力广告", command=self.on_ads_power_stop,
+                                             state="disabled")
+        self.btn_ads_power_stop.grid(row=0, column=1, sticky="we")
+
+        # 右侧：提示/说明（你也可以放独立日志框，但复用主日志最省事）
+        # 右侧：说明
+        ttk.Label(
+            right,
+            text="说明：要想使用自动看体力广告，需要先启动抢环，随后停止，回到主页面，再点击看广告按钮\n",
+            style="Hint.TLabel"
+        ).pack(anchor="nw", pady=(0, 10))
+
+        # 右侧：广告日志框
+        ads_log_grp = ttk.LabelFrame(right, text="广告日志输出", padding=10)
+        ads_log_grp.pack(fill="both", expand=True)
+
+        self.txt_ads_log = tk.Text(ads_log_grp, wrap="word", height=18)
+        self.txt_ads_log.pack(side="left", fill="both", expand=True)
+
+        sb_ads = ttk.Scrollbar(ads_log_grp, orient="vertical", command=self.txt_ads_log.yview)
+        sb_ads.pack(side="right", fill="y")
+        self.txt_ads_log.configure(yscrollcommand=sb_ads.set)
+
+        # 广告日志 tags（沿用同一套颜色）
+        self.txt_ads_log.tag_configure("INFO", foreground="#1f6feb")
+        self.txt_ads_log.tag_configure("WARN", foreground="#b58900")
+        self.txt_ads_log.tag_configure("ERROR", foreground="#d73a49")
+        self.txt_ads_log.tag_configure("DEBUG", foreground="#6a737d")
+
+        # 广告日志底部快捷按钮（可选）
+        ads_bottom = ttk.Frame(right)
+        ads_bottom.pack(fill="x", pady=(10, 0))
+        ttk.Button(ads_bottom, text="清空广告日志", command=self.on_clear_ads_log).pack(side="left")
+        ttk.Button(ads_bottom, text="复制广告日志", command=self.on_copy_ads_log).pack(side="left", padx=8)
+
     def _build_about_tab(self, parent: ttk.Frame):
         ttk.Label(parent, text="这里预留做全局设置/模块管理器/调试工具。", style="Hint.TLabel").pack(anchor="w")
         ttk.Label(
@@ -254,6 +323,13 @@ class AppGUI:
                 #     for key, val in wc.items():
                 #         if key in self.var_world_counts:
                 #             self.var_world_counts[key].set(str(val))
+                elif kind == "AD_POWER_DONE":
+                    ok = payload["ok"]
+                    reason = payload["reason"]
+                    self.btn_ads_power_start.configure(state="normal")
+                    self.btn_ads_power_stop.configure(state="disabled")
+                    self._push_log("INFO" if ok else "WARN",
+                                   f"[GUI][AD] 体力广告结束 ok={ok} reason={reason}")
                 else:
                     self._append_log(kind, payload)
         except queue.Empty:
@@ -264,8 +340,18 @@ class AppGUI:
     def _append_log(self, level: str, msg: str):
         ts = time.strftime("%H:%M:%S")
         line = f"{ts} {msg}\n"
-        self.txt_log.insert("end", line, level if level in ("INFO", "WARN", "ERROR", "DEBUG") else "INFO")
-        self.txt_log.see("end")
+        tag = level if level in ("INFO", "WARN", "ERROR", "DEBUG") else "INFO"
+
+        s = msg.lstrip()
+        # 抢环日志
+        if s.startswith("[WORLD]") or s.startswith("[GUI]"):
+            self.txt_log.insert("end", line, tag)
+            self.txt_log.see("end")
+        # 广告日志
+        if s.startswith("[AD]"):
+            if self.txt_ads_log is not None:
+                self.txt_ads_log.insert("end", line, tag)
+                self.txt_ads_log.see("end")
 
     def _push_log(self, level: str, msg: str):
         """Direct push from GUI thread."""
@@ -295,6 +381,7 @@ class AppGUI:
                 self.automation = WorldAutomation(window_name=window_name)
                 # set callbacks once
                 self.automation.set_callbacks(log_cb=self.log_cb, current_page_cb=self.current_page_cb, counter_cb=self.counter_cb)
+                self.btn_ads_power_start.configure(state="normal")
                 self._push_log("INFO", f"[GUI] 已初始化 WorldAutomation(window_name='{window_name}')")
             except Exception as e:
                 tb = traceback.format_exc()
@@ -317,6 +404,7 @@ class AppGUI:
             self.btn_start.configure(state="disabled")
             self.btn_stop.configure(state="normal")
             self.btn_reset.configure(state="normal")
+            # self.btn_ads_power_start.configure(state="normal")
             self._push_log("INFO", f"[GUI] 启动：EXPECT_DIFF={expect_diff}")
         except Exception as e:
             tb = traceback.format_exc()
@@ -363,6 +451,21 @@ class AppGUI:
         except Exception as e:
             self._push_log("ERROR", f"[GUI] 复制失败：{e}")
 
+    def on_clear_ads_log(self):
+        if self.txt_ads_log is not None:
+            self.txt_ads_log.delete("1.0", "end")
+
+    def on_copy_ads_log(self):
+        if self.txt_ads_log is None:
+            return
+        try:
+            content = self.txt_ads_log.get("1.0", "end-1c")
+            self.root.clipboard_clear()
+            self.root.clipboard_append(content)
+            self._push_log("INFO", "[GUI] 广告日志已复制到剪贴板")
+        except Exception as e:
+            self._push_log("ERROR", f"[GUI] 复制广告日志失败：{e}")
+
     def on_close(self):
         # Graceful stop
         try:
@@ -382,6 +485,55 @@ class AppGUI:
         )
         if self.automation is not None:
             setattr(self.automation, "mid_entry_click_enabled", enabled)
+
+    def on_ads_power_done(self, ok: bool, reason: str):
+        # worker线程 -> queue
+        self.msg_queue.put(("AD_POWER_DONE", {"ok": ok, "reason": reason}))
+
+    def _ensure_ad_watcher(self) -> bool:
+        """确保 AdWatcher 已创建且绑定到当前 automation。"""
+        if self.automation is None:
+            messagebox.showwarning("提示", "请先在“环球抢环”页点击【启动】，初始化窗口后再使用广告模块。")
+            return False
+
+        if self.ad_watcher is None:
+            try:
+                # 按你的文件名改：比如 ad_watcher.py
+                from ad_watcher import AdWatcher
+                self.ad_watcher = AdWatcher(world=self.automation, scan_interval=300)
+                self.ad_watcher.set_callbacks(log_cb=self.log_cb, on_power_done=self.on_ads_power_done)
+                self._push_log("INFO", "[GUI] 已初始化 AdWatcher（复用当前 WorldAutomation）")
+            except Exception as e:
+                tb = traceback.format_exc()
+                self._push_log("ERROR", f"[GUI] 初始化 AdWatcher 失败：{e}\n{tb}")
+                messagebox.showerror("错误", f"初始化 AdWatcher 失败：{e}")
+                self.ad_watcher = None
+                return False
+        return True
+
+    def on_ads_power_start(self):
+        if not self._ensure_ad_watcher():
+            return
+
+        try:
+            max_rounds = int(self.var_ads_power_rounds.get().strip())
+            cooldown = int(self.var_ads_power_cooldown.get().strip())
+        except Exception:
+            messagebox.showwarning("提示", "max_rounds / cooldown 必须是整数。")
+            return
+
+        self.ad_watcher.start_power_ads(max_rounds=max_rounds, cooldown=cooldown)
+        self._push_log("INFO", f"[GUI][AD] 启动体力广告：max_rounds={max_rounds}, cooldown={cooldown}s")
+        self.btn_ads_power_start.configure(state="disabled")
+        self.btn_ads_power_stop.configure(state="normal")
+
+    def on_ads_power_stop(self):
+        if self.ad_watcher is None:
+            return
+        self.ad_watcher.stop_power_ads()
+        self._push_log("INFO", "[GUI][AD] 已请求停止体力广告")
+        self.btn_ads_power_start.configure(state="normal")
+        self.btn_ads_power_stop.configure(state="disabled")
 
 def main():
     root = tk.Tk()

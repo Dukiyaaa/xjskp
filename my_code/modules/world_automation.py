@@ -262,7 +262,8 @@ class WorldAutomation:
                 win32gui.ShowWindow(self.HWND, win32con.SW_RESTORE)
                 time.sleep(0.2)
     # GUI日志打印
-    def _log(self, msg: str):
+    def _log(self, msg):
+        msg = f"[WORLD] {msg}"
         if self.log_cb:
             self.log_cb(msg)
         else:
@@ -758,6 +759,7 @@ class WorldAutomation:
                     self._log(f'[DEBUG]开始游戏按钮: {start_button_position}')
                     self._log(f'[DEBUG]底部战斗字样按钮: {fight_button_position}')
                     self._log(f'[DEBUG]游戏内暂停键按钮: {game_has_started_position}')
+                    self._log(f'[DEBUG]广告/巡逻叉号: {cancel_position}')
                     if cancel_position:
                         self._log("[STATE]有广告/巡逻遮挡,准备关闭,即将自动点击右上角叉号")
                         self.click_at(cancel_position[0], cancel_position[1])
@@ -920,6 +922,8 @@ class WorldAutomation:
                         else:
                             self._log(f'[STATE]很可能没来的及退出，游戏开始了')
                     else:
+                        if self.diff is None:
+                            self._log(f'[STATE]未能检测出环球难度等级')
                         # 否则等待房主开启游戏
                         scene_bgr = self.bkgnd_full_window_screenshot()
                         game_has_started_position = self.find_button(scene_bgr, "game_has_started")
