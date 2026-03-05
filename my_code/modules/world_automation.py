@@ -81,7 +81,8 @@ class WorldAutomation:
             "fight": resource_path(r"images\template\fight.png"),
             "cancel": resource_path(r"images\template\cancel.png"),
             "cross_server": resource_path(r"images\template\cross_server.png"),
-            "upgrade_coin": resource_path(r"images\template\upgrade_coin.png")
+            "upgrade_coin": resource_path(r"images\template\upgrade_coin.png"),
+            "chart": resource_path(r"images\template\chart.png")
             # 其他模板路径...
         }
         self.template_paths = template_paths
@@ -632,8 +633,8 @@ class WorldAutomation:
         self._log(f'[STATE]触发定时检查当前页面归属')
         # 战斗中
         self._log(f'[STATE]查找战斗页面特征中')
-        if self.find_button(scene_bgr, "game_has_started"):
-            self._log(f'[STATE]已成功查找到战斗暂停按钮,当前页面为战斗页面')
+        if self.find_button(scene_bgr, "game_has_started") or self.find_button(scene_bgr, "chart"):
+            self._log(f'[STATE]已成功查找到战斗暂停按钮/伤害统计按钮,当前页面为战斗页面')
             return 4
         self._log(f'[STATE]未能找到战斗页面特征,现在开始查找组队页面特征')
         # 组队页（有退出按钮）
@@ -745,8 +746,9 @@ class WorldAutomation:
                     cross_server_button_position = self.find_button(scene_bgr, "cross_server")
                     # 主页战斗按钮
                     fight_button_position = self.find_button(scene_bgr, "fight")
-                    # 游戏内开始按钮
+                    # 游戏内开始按钮和伤害统计按钮
                     game_has_started_position = self.find_button(scene_bgr, "game_has_started")
+                    chart_position = self.find_button(scene_bgr, "chart")
                     # 单人处于组队内
                     master_left_position = self.find_button(scene_bgr, "master_left")
                     # 有可能有广告跳出来
@@ -787,7 +789,7 @@ class WorldAutomation:
                         self._log("[STATE]当前实际处于招募页面中")
                         # self.VIEW = 2
                         self.set_view(2)
-                    elif game_has_started_position:
+                    elif game_has_started_position or chart_position:
                         self._log("[STATE]当前实际已在战斗中")
                         self._game_begin(self.diff)
                         # self.VIEW = 4
@@ -839,6 +841,7 @@ class WorldAutomation:
                     # 有个bug，组队界面如果刚进去别人就退了的话，也会有个开始游戏的按钮
                     start_button_position = self.find_button(scene_bgr, "start_game")
                     game_has_started_position = self.find_button(scene_bgr, "game_has_started")
+                    chart_position = self.find_button(scene_bgr, "chart")
                     fight_button_position = self.find_button(scene_bgr, "fight")
                     if team_exit_button_position:
                         self._log("[STATE]已进入组队界面，停止连点")
@@ -854,7 +857,7 @@ class WorldAutomation:
                         self.diff = None
                         # self.VIEW = 0
                         self.set_view(0)
-                    elif game_has_started_position:
+                    elif game_has_started_position or chart_position:
                         self._log(f'[STATE]还没来得及进行环球难度判断，游戏便开始了')
                         self._game_begin(self.diff)
                         # if self.diff:
@@ -899,8 +902,9 @@ class WorldAutomation:
                         scene_bgr = self.bkgnd_full_window_screenshot()
                         start_button_position = self.find_button(scene_bgr, "start_game")
                         game_has_started_position = self.find_button(scene_bgr, "game_has_started")
+                        chart_position = self.find_button(scene_bgr, "chart")
                         self._log(f'[STATE]正在判断是否成功退出')
-                        if game_has_started_position:
+                        if game_has_started_position or chart_position:
                             self._log(f'[STATE]没来的及退出，游戏开始了')
                             self._game_begin(self.diff)
                             # if self.diff:
@@ -919,8 +923,9 @@ class WorldAutomation:
                         # 否则等待房主开启游戏
                         scene_bgr = self.bkgnd_full_window_screenshot()
                         game_has_started_position = self.find_button(scene_bgr, "game_has_started")
+                        chart_position = self.find_button(scene_bgr, "chart")
                         master_left_position = self.find_button(scene_bgr, "master_left")
-                        if game_has_started_position:
+                        if game_has_started_position or chart_position:
                             self._log(f'[STATE]房主已开启游戏，祝你胜利')
                             self._game_begin(self.diff)
                             # if self.diff:

@@ -138,7 +138,7 @@ class AppGUI:
         self.var_mid_entry_click = tk.BooleanVar(value=True)
         self.chk_mid_entry = ttk.Checkbutton(
             grp,
-            text="局内自动点击中间词条",
+            text="自动点击中间词条",
             variable=self.var_mid_entry_click,
             command=self.on_toggle_mid_entry_click
         )
