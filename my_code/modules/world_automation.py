@@ -48,6 +48,10 @@ class WorldAutomation:
             "start_game": resource_path(r"images\template\main_start_game.png"),
             # 主页：聊天框
             "main_chat": resource_path(r"images\template\main_chat.png"),
+            # 主页，带红点的聊天框
+            "main_chat_notice": resource_path(r"images\template\main_chat_notice.png"),
+            # 主页，带军团公告的聊天框
+            "main_chat_corps": resource_path(r"images\template\main_chat_corps.png"),
             # 聊天框：招募
             "chat_recruit": resource_path(r"images\template\chat_recruit.png"),
             # 组队界面：退出按钮
@@ -360,7 +364,7 @@ class WorldAutomation:
         self._run_idx += 1
         self._game_start_ts = time.time()
         self._game_diff = diff
-        self._log(f"[GAME] 第{self._run_idx}把开始 | 难度={diff} | 当前版本程序会自动选择中间的词条")
+        self._log(f"[GAME] 第{self._run_idx}把开始 | 难度={diff} | 可在左侧按钮勾选是否自动选择中间词条")
 
     def _game_end(self):
         """记录结束信息，并打日志"""
@@ -670,6 +674,11 @@ class WorldAutomation:
 
             try:
                 scene = self.bkgnd_full_window_screenshot()
+                # 若有广告，先关闭广告
+                cancel_position = self.find_button(scene_bgr, "cancel")
+                if cancel_position:
+                    self._log("[SCAN]有广告/巡逻遮挡,准备关闭,即将自动点击右上角叉号")
+                    self.click_at(cancel_position[0], cancel_position[1])
                 v = self.detect_view(scene)
                 self._log(f"[SCAN] try {i}/{self.SCAN_RETRY} => {v}")
 
@@ -746,18 +755,27 @@ class WorldAutomation:
                     self._log(f'[STATE]正在通过寻找特定元素判断当前页面,若为None说明没找到:')
                     self._log(f'[DEBUG]开始游戏按钮: {start_button_position}')
                     self._log(f'[DEBUG]底部战斗字样按钮: {fight_button_position}')
-                    self._log(f'[DEBUG]游戏内暂停键按钮: {game_has_started_position}')                                                            \
+                    self._log(f'[DEBUG]游戏内暂停键按钮: {game_has_started_position}')
+                    if cancel_position:
+                        self._log("[STATE]有广告/巡逻遮挡,准备关闭,即将自动点击右上角叉号")
+                        self.click_at(cancel_position[0], cancel_position[1])
+
                     # 几种情况：主页、组队、聊天框、战斗中
                     if start_button_position and fight_button_position:
-                        if cancel_position:
-                            self._log("[STATE]有广告遮挡,准备关闭,即将自动点击右上角叉号")
-                            self.click_at(cancel_position[0], cancel_position[1])
-                            time.sleep(0.5)
-                            scene_bgr = self.bkgnd_full_window_screenshot()
-                            main_chat_button_position = self.find_button(scene_bgr, "main_chat")
+                        # if cancel_position:
+                        #     self._log("[STATE]有广告遮挡,准备关闭,即将自动点击右上角叉号")
+                        #     self.click_at(cancel_position[0], cancel_position[1])
+                        #     time.sleep(0.5)
+                        #     scene_bgr = self.bkgnd_full_window_screenshot()
+                        #     main_chat_button_position = self.find_button(scene_bgr, "main_chat")
                         self._log("[STATE]处于主页中,即将进入聊天框")
                         # 通过模板匹配找到聊天框按钮
-                        self.click_at(main_chat_button_position[0], main_chat_button_position[1])
+                        if main_chat_button_position:
+                            self.click_at(main_chat_button_position[0], main_chat_button_position[1])
+                        else:
+                            self._log("[ERROR]检测不到聊天框位置,尝试采用固定坐标点击进入聊天框页面！！！")
+                            self.click_at(743, 846)
+                            continue
                         time.sleep(0.5)
                         # self.VIEW = 1
                         self.set_view(1)
@@ -797,7 +815,6 @@ class WorldAutomation:
                         self.diff = None
                         # self.VIEW = 0
                         self.set_view(0)
-
                 elif self.VIEW == 1:
                     # 每次进入新页面前，都需要先截下图
                     scene_bgr = self.bkgnd_full_window_screenshot()
@@ -840,8 +857,8 @@ class WorldAutomation:
                     elif game_has_started_position:
                         self._log(f'[STATE]还没来得及进行环球难度判断，游戏便开始了')
                         self._game_begin(self.diff)
-                        if self.diff:
-                            self._inc_world_count(self.diff)
+                        # if self.diff:
+                            # self._inc_world_count(self.diff)
                         self.stop_clicking()
                         # self.VIEW = 4
                         self.set_view(4)
@@ -886,8 +903,8 @@ class WorldAutomation:
                         if game_has_started_position:
                             self._log(f'[STATE]没来的及退出，游戏开始了')
                             self._game_begin(self.diff)
-                            if self.diff:
-                                self._inc_world_count(self.diff)
+                            # if self.diff:
+                            #     self._inc_world_count(self.diff)
                             self.stop_clicking()
                             # self.VIEW = 4
                             self.set_view(4)
@@ -906,8 +923,8 @@ class WorldAutomation:
                         if game_has_started_position:
                             self._log(f'[STATE]房主已开启游戏，祝你胜利')
                             self._game_begin(self.diff)
-                            if self.diff:
-                                self._inc_world_count(self.diff)
+                            # if self.diff:
+                            #     self._inc_world_count(self.diff)
                             self.stop_clicking()
                             # self.VIEW = 4
                             self.set_view(4)
@@ -975,8 +992,10 @@ class WorldAutomation:
                             self.set_view(0)
                     else:
                         # self._log("[STATE]战斗进行中...")
-                        # 直接一直点中间的词条？
-                        self.click_at_without_hover(379, 751)
+
+                        if getattr(self, "mid_entry_click_enabled", True):
+                            # 一直点中间的词条
+                            self.click_at_without_hover(379, 751)
                         time.sleep(2)
         finally:
             self.stop_clicking()  # 确保退出必停连点

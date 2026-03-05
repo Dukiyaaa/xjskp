@@ -62,7 +62,7 @@ class AppGUI:
         style = ttk.Style(self.root)
         # Use default theme if available
         try:
-            style.theme_use("clam")
+            style.theme_use("vista")
         except Exception:
             pass
 
@@ -134,6 +134,16 @@ class AppGUI:
         self.btn_reset = ttk.Button(grp, text="重置计数", command=self.on_reset_counter, state="disabled")
         self.btn_reset.grid(row=3, column=0, columnspan=2, sticky="we", pady=(10, 0))
 
+        # 局内自动点击中间词条开关
+        self.var_mid_entry_click = tk.BooleanVar(value=True)
+        self.chk_mid_entry = ttk.Checkbutton(
+            grp,
+            text="局内自动点击中间词条",
+            variable=self.var_mid_entry_click,
+            command=self.on_toggle_mid_entry_click
+        )
+        self.chk_mid_entry.grid(row=4, column=0, columnspan=2, sticky="w", pady=(10, 0))
+
         # Counter display
         grp2 = ttk.LabelFrame(left, text="状态", padding=10)
         grp2.pack(fill="x", pady=(12, 0))
@@ -153,7 +163,6 @@ class AppGUI:
         ttk.Label(grp2, text="当前所处页面：").grid(row=2, column=0, sticky="w")
         ttk.Label(grp2, textvariable=self.var_current_page, font=("Consolas", 14, "bold")).grid(row=2, column=1,
                                                                                                 sticky="w")
-
         # # 2) 环球救援计数（从 row=2 开始）
         # self.var_world_counts = {}
         # for i in range(1, 21):
@@ -229,7 +238,7 @@ class AppGUI:
                 if kind == "COUNTER":
                     self.var_counter.set(payload)
                 elif kind == "VIEW":
-                    print(f'[DEBUG] 页面发生变化，: {payload}')  # 这里输出页面更新的值
+                    # print(f'[DEBUG] 页面发生变化，: {payload}')  # 这里输出页面更新的值
                     view_map = {
                         0: "主页",
                         1: "聊天框",
@@ -239,12 +248,12 @@ class AppGUI:
                     }
                     page_name = view_map.get(payload, "未知页面")
                     self.var_current_page.set(page_name)  # 将更新后的页面名称设置到 GUI
-                elif kind == "WORLD_COUNTS":
-                    wc = payload  # dict
-                    self._push_log("DEBUG", f"[GUI] 更新 WORLD_COUNTS: {wc}")  # 调试信息
-                    for key, val in wc.items():
-                        if key in self.var_world_counts:
-                            self.var_world_counts[key].set(str(val))
+                # elif kind == "WORLD_COUNTS":
+                #     wc = payload  # dict
+                #     self._push_log("DEBUG", f"[GUI] 更新 WORLD_COUNTS: {wc}")  # 调试信息
+                #     for key, val in wc.items():
+                #         if key in self.var_world_counts:
+                #             self.var_world_counts[key].set(str(val))
                 else:
                     self._append_log(kind, payload)
         except queue.Empty:
@@ -301,6 +310,8 @@ class AppGUI:
 
         # Start
         try:
+            # 同步 GUI 开关状态
+            self.automation.mid_entry_click_enabled = self.var_mid_entry_click.get()
             self.automation.start(expect_diff=expect_diff, log_cb=self.log_cb, current_page_cb=self.current_page_cb, counter_cb=self.counter_cb)
             self.var_running.set("运行中")
             self.btn_start.configure(state="disabled")
@@ -363,6 +374,14 @@ class AppGUI:
             pass
         self.root.destroy()
 
+    def on_toggle_mid_entry_click(self):
+        enabled = self.var_mid_entry_click.get()
+        self._push_log(
+            "INFO",
+            f"[GUI] 局内自动点击中间词条：{'开启' if enabled else '关闭'}"
+        )
+        if self.automation is not None:
+            setattr(self.automation, "mid_entry_click_enabled", enabled)
 
 def main():
     root = tk.Tk()
