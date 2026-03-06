@@ -27,7 +27,7 @@ except Exception as e:
 class AppGUI:
     def __init__(self, root: tk.Tk):
         self.root = root
-        self.root.title("向僵尸开炮 - 自动化控制台")
+        self.root.title("向僵尸开炮脚本")
         self.root.geometry("980x720")
         self.root.minsize(900, 650)
 
@@ -76,7 +76,7 @@ class AppGUI:
         header = ttk.Frame(self.root, padding=(12, 10))
         header.pack(fill="x")
 
-        ttk.Label(header, text="环球抢票模块-季季如春", style="Header.TLabel").pack(side="left")
+        ttk.Label(header, text="向僵尸开炮脚本-季季如春", style="Header.TLabel").pack(side="left")
         ttk.Label(header, text="日志/计数回调已做线程安全队列转发", style="Hint.TLabel").pack(side="left", padx=12)
 
         # Notebook (Tabs)
@@ -89,7 +89,7 @@ class AppGUI:
 
         # 新增：看广告
         self.tab_ads = ttk.Frame(self.nb, padding=12)
-        self.nb.add(self.tab_ads, text="看广告")
+        self.nb.add(self.tab_ads, text="自动看广告")
 
         self.tab_about = ttk.Frame(self.nb, padding=12)
         self.nb.add(self.tab_about, text="设置/关于")
@@ -268,7 +268,8 @@ class AppGUI:
         ttk.Label(parent, text="这里预留做全局设置/模块管理器/调试工具。", style="Hint.TLabel").pack(anchor="w")
         ttk.Label(
             parent,
-            text="v1.5:加入中间词条选择开关;优化遇到广告时的处理方法;战斗界面判定条件优化",
+            text="v1.6:加入自动看广告模块,目前仅支持自动看体力广告,但测试还不够多\n"
+            "v1.5:加入中间词条选择开关;优化遇到广告时的处理方法;战斗界面判定条件优化,",
             style="Hint.TLabel"
         ).pack(anchor="w", pady=(6, 0))
 

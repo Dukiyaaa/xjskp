@@ -30,7 +30,7 @@ class TemplateMatcher:
                 self.templates[name] = img
         print(f"[INFO] 加载了 {len(self.templates)} 个模板")
 
-    def match_template(self, scene_bgr, template_name, threshold=0.90):
+    def match_template(self, scene_bgr, template_name, threshold=0.85):
         """
         在给定的截图中寻找模板
         :param scene_bgr: 截图图像（BGR格式）
