@@ -52,8 +52,6 @@ class WorldAutomation:
             "main_chat_notice": resource_path(r"images\template\main_chat_notice.png"),
             # 主页，带军团公告的聊天框
             "main_chat_army": resource_path(r"images\template\main_chat_army.png"),
-            # 主页，带军团公告的聊天框
-            "main_chat_corps": resource_path(r"images\template\main_chat_corps.png"),
             # 聊天框：招募
             "chat_recruit": resource_path(r"images\template\chat_recruit.png"),
             # 组队界面：退出按钮

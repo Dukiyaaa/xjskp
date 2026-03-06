@@ -66,7 +66,7 @@ class AppGUI:
             style.theme_use("vista")
         except Exception:
             pass
-
+        
         style.configure("TButton", padding=6)
         style.configure("Header.TLabel", font=("Microsoft YaHei UI", 12, "bold"))
         style.configure("Hint.TLabel", foreground="#666666")
