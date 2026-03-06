@@ -168,14 +168,38 @@ class AppGUI:
         ttk.Label(grp2, text="当前所处页面：").grid(row=2, column=0, sticky="w")
         ttk.Label(grp2, textvariable=self.var_current_page, font=("Consolas", 14, "bold")).grid(row=2, column=1,
                                                                                                 sticky="w")
-        # # 2) 环球救援计数（从 row=2 开始）
-        # self.var_world_counts = {}
-        # for i in range(1, 21):
-        #     r = i + 1  # i=1 -> row=2
-        #     ttk.Label(grp2, text=f"环球救援{i}:").grid(row=r, column=0, sticky="w", pady=(6, 0))
-        #     self.var_world_counts[f"world_rescue_{i}"] = tk.StringVar(value="0")
-        #     ttk.Label(grp2, textvariable=self.var_world_counts[f"world_rescue_{i}"],
-        #               font=("Consolas", 14, "bold")).grid(row=r, column=1, sticky="w", pady=(6, 0))
+        # 环球救援统计表（3x7）
+        grp3 = ttk.LabelFrame(left, text="环球统计", padding=10)
+        grp3.pack(fill="x", pady=(12, 0))
+
+        self.var_world_counts = {}
+
+        cols = 7
+        total = 21   # 20 + None
+
+        for i in range(total):
+            row = i // cols
+            col = i % cols
+
+            if i < 20:
+                name = f"环球{i+1}"
+                key = f"world_{i+1}"
+            else:
+                name = "None"
+                key = "world_none"
+
+            # 标题
+            ttk.Label(grp3, text=name).grid(row=row*2, column=col, padx=6, pady=(2,0))
+
+            # 计数器
+            var = tk.StringVar(value="0")
+            self.var_world_counts[key] = var
+
+            ttk.Label(
+                grp3,
+                textvariable=var,
+                font=("Consolas", 12, "bold")
+            ).grid(row=row*2+1, column=col, padx=6, pady=(0,6))
 
         # ---- Log box ----
         log_grp = ttk.LabelFrame(right, text="日志输出", padding=10)
