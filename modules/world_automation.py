@@ -384,8 +384,7 @@ class WorldAutomation:
             return False, 0.0, None, None
 
     def debug_check_templates(self):
-        # TemplateMatcher 里保存的 template_paths 你现在是局部变量
-        # 建议你把它变成 self.template_paths，方便检查
+        # TemplateMatcher 里保存的 template_paths
         if not hasattr(self, "template_paths"):
             self._log("[TPL_PATH] self.template_paths not found (please store it in __init__)")
             return
@@ -623,16 +622,21 @@ class WorldAutomation:
         win32api.PostMessage(self.HWND, win32con.WM_LBUTTONUP, 0, lParam)
 
 # ---------------------- 连点线程 ---------------------
-    # 连点线程
+    # 连点线程 模拟真人
     def click_loop(self):
+        next_click = time.perf_counter()
         while not self.stop_click_event.is_set():
             if self._confirm_xy is None:
-                self._log("[ERROR] _confirm_xy 为空，跳过连点")
-                time.sleep(0.1)  # 等待一段时间再检查
+                time.sleep(0.05)
                 continue
-            x, y = self._confirm_xy
-            self.click_at_without_hover(x, y)
-            time.sleep(0.01)
+            now = time.perf_counter()
+            if now >= next_click:
+                x, y = self._confirm_xy
+                self.click_at_without_hover(x, y)
+
+                next_click = now + self._min_click_interval + random.uniform(0.001, 0.003)
+            else:
+                time.sleep(0.001)
 
     def start_clicking(self):
         if self.click_thread is not None and self.click_thread.is_alive():
@@ -1099,7 +1103,7 @@ class WorldAutomation:
             time.sleep(1)
             if self.is_home_page_by_feats(feats):
                 self._log("[STATE]由于游戏bug回到了主页面，停止连点")
-                # self.stop_clicking()
+                self.stop_clicking()
                 self.diff = None
                 self.set_view(0)
                 time.sleep(0.5)

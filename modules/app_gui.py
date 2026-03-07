@@ -110,6 +110,7 @@ class AppGUI:
         # ---- Controls group ----
         grp = ttk.LabelFrame(left, text="参数与控制", padding=10)
         grp.pack(fill="x")
+        # grp.columnconfigure(3, weight=1)
 
         # Window name
         ttk.Label(grp, text="窗口名（FindWindow）").grid(row=0, column=0, sticky="w", pady=(0, 6))
@@ -118,10 +119,20 @@ class AppGUI:
         ent_win.grid(row=0, column=1, sticky="w", pady=(0, 6))
 
         # Expect diff
-        ttk.Label(grp, text="最低难度 EXPECT_DIFF").grid(row=1, column=0, sticky="w", pady=(0, 6))
+        param_row = ttk.Frame(grp)
+        param_row.grid(row=1, column=0, columnspan=2, sticky="w", pady=(0, 6))
+
+        ttk.Label(param_row, text="最低难度").grid(row=0, column=0, sticky="w")
+
         self.var_expect_diff = tk.StringVar(value="7")
-        ent_diff = ttk.Entry(grp, textvariable=self.var_expect_diff, width=22)
-        ent_diff.grid(row=1, column=1, sticky="w", pady=(0, 6))
+        ent_diff = ttk.Entry(param_row, textvariable=self.var_expect_diff, width=8)
+        ent_diff.grid(row=0, column=1, sticky="w", padx=(8, 24))
+
+        ttk.Label(param_row, text="连点间隔(秒)").grid(row=0, column=2, sticky="w")
+
+        self.var_click_interval = tk.StringVar(value="0.035")
+        ent_click_interval = ttk.Entry(param_row, textvariable=self.var_click_interval, width=8)
+        ent_click_interval.grid(row=0, column=3, sticky="w", padx=(8, 0))
 
         # Buttons row
         btn_row = ttk.Frame(grp)
@@ -413,6 +424,13 @@ class AppGUI:
         except Exception:
             messagebox.showwarning("提示", "最低难度必须是整数。")
             return
+        try:
+            click_interval = float(self.var_click_interval.get().strip())
+            if click_interval <= 0:
+                raise ValueError
+        except Exception:
+            messagebox.showwarning("提示", "连点间隔必须是大于0的小数，例如 0.03")
+            return
 
         # Create module instance if needed
         if self.automation is None:
@@ -443,6 +461,7 @@ class AppGUI:
         try:
             # 同步 GUI 开关状态
             self.automation.mid_entry_click_enabled = self.var_mid_entry_click.get()
+            self.automation._min_click_interval = click_interval
             self.automation.start(
                 expect_diff=expect_diff,
                 log_cb=self.log_cb,
