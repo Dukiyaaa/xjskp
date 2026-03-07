@@ -1139,14 +1139,12 @@ class WorldAutomation:
 
         # -------- 情况1：难度低于预期，尝试退出 --------
         if self.diff is not None and self.diff < int(self.EXPECT_DIFF):
-            self._log(f"[STATE]检测环球难度:{self.diff},低于要求难度{self.EXPECT_DIFF}，即将退出")
-            self._log("[STATE]当队里有两人时,退出分为两步,先点左下角退出键,再点弹窗确认")
-
+            # self._log("[STATE]当队里有两人时,退出分为两步,先点左下角退出键,再点弹窗确认")
             self.click_at_without_hover(leave1_x, leave1_y)
             time.sleep(0.2)
             self.click_at_without_hover(leave2_x, leave2_y)
             time.sleep(2)
-
+            self._log(f"[STATE]检测环球难度:{self.diff},低于要求难度{self.EXPECT_DIFF}，已尝试退出")
             # 退出后重新判断页面
             scene_bgr = self.bkgnd_full_window_screenshot()
             feats = self.collect_view3_features(scene_bgr)
