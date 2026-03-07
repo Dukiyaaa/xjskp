@@ -40,7 +40,8 @@ def resource_path(rel_path: str) -> str:
 class WorldAutomation:
     def __init__(self, window_name="向僵尸开炮"):
         # 用于记录每个“环球救援”任务的计数器
-        self.world_counts = {f"world_rescue_{i + 1}": 0 for i in range(20)}  # 初始化 20 个环球救援任务的计数器
+        self.world_counts = {f"world_{i + 1}": 0 for i in range(20)}
+        self.world_counts["world_none"] = 0  # 初始化 21 个环球救援任务的计数器
         self.world_counts_cb = None
         # 模板路径字典，存储多个模板路径
         template_paths = {
@@ -70,8 +71,13 @@ class WorldAutomation:
             "world_diff_11": resource_path(r"images\template\world_diff_11.png"),
             "world_diff_12": resource_path(r"images\template\world_diff_12.png"),
             "world_diff_13": resource_path(r"images\template\world_diff_13.png"),
-            # "world_diff_14": resource_path(r"images\template\world_diff_14.png"),
-            # "world_diff_15": resource_path(r"images\template\world_diff_15.png"),
+            "world_diff_14": resource_path(r"images\template\world_diff_14.png"),
+            "world_diff_15": resource_path(r"images\template\world_diff_15.png"),
+            "world_diff_16": resource_path(r"images\template\world_diff_16.png"),
+            "world_diff_17": resource_path(r"images\template\world_diff_17.png"),
+            "world_diff_18": resource_path(r"images\template\world_diff_18.png"),
+            "world_diff_19": resource_path(r"images\template\world_diff_19.png"),
+            "world_diff_20": resource_path(r"images\template\world_diff_20.png"),
             # "recruit_button": resource_path(r"images\template\recruit_button.png"),
             "game_has_started": resource_path(r"images\template\game_has_started.png"),
             "master_left": resource_path(r"images\template\master_left.png"),
@@ -83,7 +89,30 @@ class WorldAutomation:
             "cancel_time_act": resource_path(r"images\template\cancel_time_act.png"),
             "cross_server": resource_path(r"images\template\cross_server.png"),
             "upgrade_coin": resource_path(r"images\template\upgrade_coin.png"),
-            "chart": resource_path(r"images\template\chart.png")
+            "chart": resource_path(r"images\template\chart.png"),
+
+            # 局内环球难度 目前只做到了12
+            "world_diff_in_game_1": resource_path(r"images\template\world_diff_in_game_1.png"),
+            "world_diff_in_game_2": resource_path(r"images\template\world_diff_in_game_2.png"),
+            "world_diff_in_game_3": resource_path(r"images\template\world_diff_in_game_3.png"),
+            "world_diff_in_game_4": resource_path(r"images\template\world_diff_in_game_4.png"),
+            "world_diff_in_game_5": resource_path(r"images\template\world_diff_in_game_5.png"),
+            "world_diff_in_game_6": resource_path(r"images\template\world_diff_in_game_6.png"),
+            "world_diff_in_game_7": resource_path(r"images\template\world_diff_in_game_7.png"),
+            "world_diff_in_game_8": resource_path(r"images\template\world_diff_in_game_8.png"),
+            "world_diff_in_game_9": resource_path(r"images\template\world_diff_in_game_9.png"),
+            "world_diff_in_game_10": resource_path(r"images\template\world_diff_in_game_10.png"),
+            "world_diff_in_game_11": resource_path(r"images\template\world_diff_in_game_11.png"),
+            "world_diff_in_game_12": resource_path(r"images\template\world_diff_in_game_12.png"),
+            "world_diff_in_game_13": resource_path(r"images\template\world_diff_in_game_13.png"),
+            "world_diff_in_game_14": resource_path(r"images\template\world_diff_in_game_14.png"),
+            "world_diff_in_game_15": resource_path(r"images\template\world_diff_in_game_15.png"),
+            "world_diff_in_game_16": resource_path(r"images\template\world_diff_in_game_16.png"),
+            "world_diff_in_game_17": resource_path(r"images\template\world_diff_in_game_17.png"),
+            "world_diff_in_game_18": resource_path(r"images\template\world_diff_in_game_18.png"),
+            "world_diff_in_game_19": resource_path(r"images\template\world_diff_in_game_19.png"),
+            "world_diff_in_game_20": resource_path(r"images\template\world_diff_in_game_20.png"),
+
             # 其他模板路径...
         }
         self.template_paths = template_paths
@@ -201,7 +230,10 @@ class WorldAutomation:
             int(self.WIDTH * 2 * self.ROI_IN_GAME_X2_C),
             int(self.HEIGHT * 2 * self.ROI_IN_GAME_Y2_C),
         )
-        # self.ROI_IN_GAME_TEXT = (284, 107, 517, 142)  # 战斗页面环球救援字样
+
+        # 战斗页面顶部“环球救援”字样 ROI
+        self.ROI_IN_GAME_DIFF_TEXT = (400, 103, 516, 148)
+
         # 战斗结束后的“返回”按钮 ROI
         self.ROI_GAME_OVER_X1_C = 0.4505
         self.ROI_GAME_OVER_Y1_C = 0.8687
@@ -295,14 +327,20 @@ class WorldAutomation:
         self._log(f"[COUNTER] 已完成 {self.test_cnt} 局")
         self._emit_counter()
 
-    def _inc_world_count(self, world_number: int):
-        world_key = f"world_rescue_{world_number}"
+    def _inc_world_count(self, world_number: int | None):
+        if world_number is None:
+            world_key = "world_none"
+            world_name = "None"
+        else:
+            world_key = f"world_{world_number}"
+            world_name = f"环球救援{world_number}"
+
         if world_key in self.world_counts:
-            self.world_counts[world_key] += 1  # 增加当前任务的计数
-            self._log(f"[WORLD] 环球救援{world_number} 已打 {self.world_counts[world_key]} 次")
-            if self.world_counts_cb:  # 确保回调存在
-                self._log(f"[WORLD] 更新计数：{self.world_counts}")
-                self.world_counts_cb(self.world_counts)  # 传递整个字典
+            self.world_counts[world_key] += 1
+            self._log(f"[WORLD] {world_name} 已打 {self.world_counts[world_key]} 次")
+
+            if self.world_counts_cb:
+                self.world_counts_cb(self.world_counts)
 
     def _emit_view(self, v: int):
         if self.current_page_cb:
@@ -390,6 +428,18 @@ class WorldAutomation:
         self.test_cnt = 0
         self._emit_counter()
         self._log("[COUNTER] 已重置为 0")
+
+    def reset_world_counts(self):
+        for key in self.world_counts:
+            self.world_counts[key] = 0
+
+        if self.world_counts_cb:
+            try:
+                self.world_counts_cb(self.world_counts)
+            except Exception as e:
+                self._log(f"[WORLD_COUNTS_CB_ERROR] {e}")
+
+        self._log("[WORLD] 环球统计已重置为 0")
 
     def find_button(self, scene_bgr, template_name):
         """
@@ -612,7 +662,7 @@ class WorldAutomation:
 
         roi = self.ROI_TEAM_WORLD_TEXT
 
-        for i in range(13):  # 你有 world_diff_13，就要到 13
+        for i in range(20):  # 你有 world_diff_13，就要到 13
             template_name = f"world_diff_{i + 1}"
 
             found, score, top_left, tpl_hw = self.template_matcher.match_template_in_roi(
@@ -628,6 +678,30 @@ class WorldAutomation:
 
         return ret
 
+    def get_world_diff_in_game(self, scene_bgr):
+        """
+        战斗页面内再次识别当前环球难度
+        """
+        max_score = 0.0
+        ret = None
+
+        roi = self.ROI_IN_GAME_DIFF_TEXT
+
+        for i in range(20):
+            template_name = f"world_diff_in_game_{i + 1}"
+
+            found, score, top_left, tpl_hw = self.template_matcher.match_template_in_roi(
+                scene_bgr,
+                template_name,
+                roi,
+                threshold=0.85
+            )
+
+            if found and score > max_score:
+                max_score = score
+                ret = i + 1
+
+        return ret
     def detect_ad_popup(self, scene_bgr):
         """
         检测广告/活动弹窗
@@ -1130,15 +1204,24 @@ class WorldAutomation:
     def handle_view4(self):
         time.sleep(1.0)
         scene_bgr = self.bkgnd_full_window_screenshot()
+
+        final_diff = self.get_world_diff_in_game(scene_bgr)
+        if final_diff is not None and final_diff != self._game_diff:
+            self._game_diff = final_diff
+            self._log(f"[STATE] 战斗页最终识别难度 = {final_diff}")
+
         feats = self.collect_view4_features(scene_bgr)
 
         # -------- 情况1：战斗结束，出现返回按钮 --------
         if feats["game_over_return"]:
             time.sleep(3)
             self._log("[STATE]战斗结束，回到主页面，继续循环")
-            self._game_end()
 
-            # 增加计数
+            final_diff = self._game_diff
+            self._inc_world_count(final_diff)   # 先记难度统计
+            self._game_end()                    # 再清空本局数据
+
+            # 增加总局数
             self._inc_counter(1)
 
             pos = feats["game_over_return"]

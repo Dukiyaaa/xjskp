@@ -66,7 +66,7 @@ class AppGUI:
             style.theme_use("vista")
         except Exception:
             pass
-        
+
         style.configure("TButton", padding=6)
         style.configure("Header.TLabel", font=("Microsoft YaHei UI", 12, "bold"))
         style.configure("Hint.TLabel", foreground="#666666")
@@ -201,6 +201,19 @@ class AppGUI:
                 font=("Consolas", 12, "bold")
             ).grid(row=row*2+1, column=col, padx=6, pady=(0,6))
 
+        for c in range(7):
+            grp3.columnconfigure(c, weight=1)
+
+        self.btn_reset_world_counts = ttk.Button(
+            grp3,
+            text="重置环球统计",
+            command=self.on_reset_world_counts,
+            state="disabled"
+        )
+        self.btn_reset_world_counts.grid(
+            row=6, column=0, columnspan=7, sticky="we", pady=(8, 0)
+        )
+
         # ---- Log box ----
         log_grp = ttk.LabelFrame(right, text="日志输出", padding=10)
         log_grp.pack(fill="both", expand=True)
@@ -292,7 +305,9 @@ class AppGUI:
         ttk.Label(parent, text="这里预留做全局设置/模块管理器/调试工具。", style="Hint.TLabel").pack(anchor="w")
         ttk.Label(
             parent,
-            text="v1.6:加入自动看广告模块,目前仅支持自动看体力广告,但测试还不够多\n"
+            text=
+            "v2.0:优化了环球难度判断逻辑,现在判断比之前准确一些;加入环球统计功能\n"
+            "v1.6:加入自动看广告模块,目前仅支持自动看体力广告,但测试还不够多\n"
             "v1.5:加入中间词条选择开关;优化遇到广告时的处理方法;战斗界面判定条件优化,",
             style="Hint.TLabel"
         ).pack(anchor="w", pady=(6, 0))
@@ -342,12 +357,11 @@ class AppGUI:
                     }
                     page_name = view_map.get(payload, "未知页面")
                     self.var_current_page.set(page_name)  # 将更新后的页面名称设置到 GUI
-                # elif kind == "WORLD_COUNTS":
-                #     wc = payload  # dict
-                #     self._push_log("DEBUG", f"[GUI] 更新 WORLD_COUNTS: {wc}")  # 调试信息
-                #     for key, val in wc.items():
-                #         if key in self.var_world_counts:
-                #             self.var_world_counts[key].set(str(val))
+                elif kind == "WORLD_COUNTS":
+                    wc = payload
+                    for key, val in wc.items():
+                        if key in self.var_world_counts:
+                            self.var_world_counts[key].set(str(val))
                 elif kind == "AD_POWER_DONE":
                     ok = payload["ok"]
                     reason = payload["reason"]
@@ -405,7 +419,12 @@ class AppGUI:
             try:
                 self.automation = WorldAutomation(window_name=window_name)
                 # set callbacks once
-                self.automation.set_callbacks(log_cb=self.log_cb, current_page_cb=self.current_page_cb, counter_cb=self.counter_cb)
+                self.automation.set_callbacks(
+                    log_cb=self.log_cb,
+                    current_page_cb=self.current_page_cb,
+                    counter_cb=self.counter_cb,
+                    world_counts_cb=self.world_counts_cb
+                )
                 self.btn_ads_power_start.configure(state="normal")
                 self._push_log("INFO", f"[GUI] 已初始化 WorldAutomation(window_name='{window_name}')")
             except Exception as e:
@@ -424,11 +443,18 @@ class AppGUI:
         try:
             # 同步 GUI 开关状态
             self.automation.mid_entry_click_enabled = self.var_mid_entry_click.get()
-            self.automation.start(expect_diff=expect_diff, log_cb=self.log_cb, current_page_cb=self.current_page_cb, counter_cb=self.counter_cb)
+            self.automation.start(
+                expect_diff=expect_diff,
+                log_cb=self.log_cb,
+                current_page_cb=self.current_page_cb,
+                counter_cb=self.counter_cb,
+                world_counts_cb=self.world_counts_cb
+            )
             self.var_running.set("运行中")
             self.btn_start.configure(state="disabled")
             self.btn_stop.configure(state="normal")
             self.btn_reset.configure(state="normal")
+            self.btn_reset_world_counts.configure(state="normal")
             # self.btn_ads_power_start.configure(state="normal")
             self._push_log("INFO", f"[GUI] 启动：EXPECT_DIFF={expect_diff}")
         except Exception as e:
@@ -514,6 +540,25 @@ class AppGUI:
     def on_ads_power_done(self, ok: bool, reason: str):
         # worker线程 -> queue
         self.msg_queue.put(("AD_POWER_DONE", {"ok": ok, "reason": reason}))
+
+    def on_reset_world_counts(self):
+        if self.automation is None:
+            for var in self.var_world_counts.values():
+                var.set("0")
+            self._push_log("INFO", "[GUI] 已重置环球统计（仅界面）")
+            return
+
+        try:
+            if hasattr(self.automation, "reset_world_counts"):
+                self.automation.reset_world_counts()
+            else:
+                for var in self.var_world_counts.values():
+                    var.set("0")
+
+            self._push_log("INFO", "[GUI] 已重置环球统计")
+        except Exception as e:
+            tb = traceback.format_exc()
+            self._push_log("ERROR", f"[GUI] reset_world_counts() 异常：{e}\n{tb}")
 
     def _ensure_ad_watcher(self) -> bool:
         """确保 AdWatcher 已创建且绑定到当前 automation。"""
