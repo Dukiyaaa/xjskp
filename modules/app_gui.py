@@ -130,7 +130,7 @@ class AppGUI:
 
         ttk.Label(param_row, text="连点间隔(秒)").grid(row=0, column=2, sticky="w")
 
-        self.var_click_interval = tk.StringVar(value="0.035")
+        self.var_click_interval = tk.StringVar(value="0.025")
         ent_click_interval = ttk.Entry(param_row, textvariable=self.var_click_interval, width=8)
         ent_click_interval.grid(row=0, column=3, sticky="w", padx=(8, 0))
 
@@ -154,7 +154,7 @@ class AppGUI:
         self.var_mid_entry_click = tk.BooleanVar(value=True)
         self.chk_mid_entry = ttk.Checkbutton(
             grp,
-            text="战斗时自动点击中间词条",
+            text="战斗时随机点击词条、先锋技能、机甲",
             variable=self.var_mid_entry_click,
             command=self.on_toggle_mid_entry_click
         )

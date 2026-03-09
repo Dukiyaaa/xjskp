@@ -113,6 +113,7 @@ class WorldAutomation:
             "world_diff_in_game_19": resource_path(r"images\template\world_diff_in_game_19.png"),
             "world_diff_in_game_20": resource_path(r"images\template\world_diff_in_game_20.png"),
 
+            "resource": resource_path(r"images\template\resource.png"),
             # 其他模板路径...
         }
         self.template_paths = template_paths
@@ -268,7 +269,7 @@ class WorldAutomation:
         self.VIEW = 0
         # 鼠标点击间隔
         self._last_click_ts = 0.0
-        self._min_click_interval = 0.035  # 60ms，建议 40~120ms 之间调
+        self._min_click_interval = 0.025  # 60ms，建议 40~120ms 之间调
         # 初始化 OCR 读取器
         # self.OCR_READER = easyocr.Reader(['ch_sim', 'en'], gpu=False)
         # 进入组队页面后，用于判断是否需要判断难度
@@ -874,6 +875,9 @@ class WorldAutomation:
                 # 若有广告，先关闭广告
                 if self.handle_ad_popup(scene_bgr, sleep_after=1.0):
                     continue
+                # 若有升级，先关闭升级
+                if self.handle_upgrade_popup(scene_bgr, sleep_after=1.0):
+                    continue
                 v = self.detect_view(scene_bgr)
                 self._log(f"[SCAN] try {i}/{self.SCAN_RETRY} => {v}")
 
@@ -892,6 +896,7 @@ class WorldAutomation:
         return {
             "main_chat": self.find_button(scene_bgr, "main_chat"),
             "main_chat_army": self.find_button(scene_bgr, "main_chat_army"),
+            "resource": self.find_button(scene_bgr, "resource"),
             "master_left": self.find_button(scene_bgr, "master_left"),
             "game_over_return": self.find_button(scene_bgr, "game_over_return"),
 
@@ -930,6 +935,7 @@ class WorldAutomation:
     def collect_view3_features(self, scene_bgr):
         return {
             "start_game": self.find_button(scene_bgr, "start_game"),
+            "resource": self.find_button(scene_bgr, "resource"),
             "fight": self.find_button(scene_bgr, "fight"),
             "game_has_started": self.find_button(scene_bgr, "game_has_started"),
             "game_over_return": self.find_button(scene_bgr, "game_over_return"),
@@ -951,6 +957,9 @@ class WorldAutomation:
     def is_home_page_by_feats(self, feats):
         return feats["start_game"] is not None and feats["fight"] is not None
 
+    def is_resource_page_by_feats(self, feats):
+        return feats["resource"] is not None
+    
     def is_chat_page_by_feats(self, feats):
         return feats["chat_recruit"] is not None
 
@@ -984,6 +993,14 @@ class WorldAutomation:
             self.set_view(1)
             return
 
+        # 因为bug跳到了资源页
+        if self.is_resource_page_by_feats(feats):
+            self._log("[STATE]当前处于资源页,即将返回招募页")
+            self.click_at(404, 1400)
+            self.set_view(0)
+            time.sleep(0.5)
+            return
+        
         if self.is_chat_page_by_feats(feats):
             self._log("[STATE]当前实际处于聊天框中")
             self.set_view(1)
@@ -1040,7 +1057,7 @@ class WorldAutomation:
             self.set_view(2)
             time.sleep(0.5)
             return
-
+        
         # 实际已经在招募页
         if self.is_recruit_page_by_feats(feats):
             self._log("[STATE]当前实际已处于招募页面中")
@@ -1163,6 +1180,13 @@ class WorldAutomation:
                 self.diff = None
                 self.set_view(0)
                 return
+            # 因为bug跳到了资源页
+            elif self.is_resource_page_by_feats(feats):
+                self._log("[STATE]当前处于资源页,即将返回招募页")
+                self.click_at(404, 1400)
+                self.set_view(0)
+                time.sleep(0.5)
+                return
 
             self._log("[STATE]很可能没来的及退出，游戏开始了")
             return
@@ -1257,8 +1281,19 @@ class WorldAutomation:
 
         # -------- 情况2：战斗仍在进行中 --------
         if getattr(self, "mid_entry_click_enabled", True):
-            # 一直点中间的词条
+            # 循环点中间词条、先锋技能、机甲技能
+            # 点中间的词条
             self.click_at_without_hover(379, 751)
+            time.sleep(0.5)
+            # 先锋技能1
+            self.click_at_without_hover(95, 1184)
+            time.sleep(0.5)
+            # 先锋技能2
+            self.click_at_without_hover(715, 1184)
+            time.sleep(0.5)
+            # 机甲技能
+            self.click_at_without_hover(711, 1028)
+            time.sleep(0.5)
 
         time.sleep(2)
 # ---------------------- 主程序 ---------------------
