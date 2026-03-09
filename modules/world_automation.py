@@ -1270,7 +1270,7 @@ class WorldAutomation:
 
                 leave1_x, leave1_y = self._abs_xy(scene_bgr, self.LEAVE_STEP1_X_C, self.LEAVE_STEP1_Y_C)
                 self.click_at_without_hover(leave1_x, leave1_y)
-                time.sleep(1)
+                time.sleep(2)
 
                 self.diff = None
                 self.set_view(0)
