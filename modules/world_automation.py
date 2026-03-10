@@ -699,7 +699,7 @@ class WorldAutomation:
                 scene_bgr,
                 template_name,
                 roi,
-                threshold=0.85
+                threshold=0.92
             )
 
             if found and score > max_score:
@@ -1117,13 +1117,13 @@ class WorldAutomation:
         # 由于 bug 或其他原因回到了主页面
         if self.is_home_page_by_feats(feats):
             self.stop_clicking()
-            time.sleep(1)
-            if self.is_home_page_by_feats(feats):
-                self._log("[STATE]由于游戏bug回到了主页面，停止连点")
-                self.stop_clicking()
-                self.diff = None
-                self.set_view(0)
-                time.sleep(0.5)
+            # time.sleep(1)
+            # if self.is_home_page_by_feats(feats):
+            self._log("[STATE]由于游戏bug回到了主页面，停止连点")
+            self.stop_clicking()
+            self.diff = None
+            self.set_view(0)
+            time.sleep(0.5)
             return
 
         # 仍在招募页，保持连点
