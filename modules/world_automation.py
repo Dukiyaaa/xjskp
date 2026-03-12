@@ -114,6 +114,7 @@ class WorldAutomation:
             "world_diff_in_game_20": resource_path(r"images\template\world_diff_in_game_20.png"),
 
             "resource": resource_path(r"images\template\resource.png"),
+            "reconnect": resource_path(r"images\template\reconnect.png"),
             # 其他模板路径...
         }
         self.template_paths = template_paths
@@ -723,6 +724,52 @@ class WorldAutomation:
         self.click_at(x, y + 100)
         time.sleep(sleep_after)
         return True
+    
+    def detect_reconnect_popup(self, scene_bgr):
+        """
+        检测重连弹窗
+        返回:
+            {
+                "is_reconnect": bool,
+                "close_name": str | None,
+                "close_pos": tuple[int, int] | None
+            }
+        """
+        reconnect_templates = [
+            "reconnect",
+        ]
+
+        for name in reconnect_templates:
+            pos = self.find_button(scene_bgr, name)
+            if pos is not None:
+                return {
+                    "is_reconnect": True,
+                    "close_name": name,
+                    "close_pos": pos,
+                }
+
+        return {
+            "is_reconnect": False,
+            "close_name": None,
+            "close_pos": None,
+        }
+    
+    def handle_reconnect_popup(self, scene_bgr, sleep_after=1.0) -> bool:
+        """
+        如果当前是重连弹窗，则自动关闭
+        返回:
+            True  -> 已检测到并处理
+            False -> 当前不是重连弹窗
+        """
+        reconnect_info = self.detect_reconnect_popup(scene_bgr)
+        if not reconnect_info["is_reconnect"]:
+            return False
+
+        self._log(f"[STATE]检测到重连弹窗: {reconnect_info['close_name']}，准备重连")
+        x, y = reconnect_info["close_pos"]
+        self.click_at(x, y)
+        time.sleep(sleep_after)
+        return True
 
     # 只做页面判断，不做点击行为
     def is_home_page(self, scene_bgr):
@@ -761,6 +808,10 @@ class WorldAutomation:
             self._log('[STATE]当前存在升级页面遮挡，暂不判页')
             return self.VIEW_UNKNOWN
 
+        if self.detect_reconnect_popup(scene_bgr)["is_reconnect"]:
+            self._log('[STATE]当前存在重连页面遮挡，暂不判页')
+            return self.VIEW_UNKNOWN
+        
         if self.is_battle_page(scene_bgr):
             self._log('[STATE]当前页面为战斗页面')
             return 4
@@ -801,6 +852,9 @@ class WorldAutomation:
                     continue
                 # 若有升级，先关闭升级
                 if self.handle_upgrade_popup(scene_bgr, sleep_after=1.0):
+                    continue
+                # 若有掉线重连，先重连
+                if self.handle_reconnect_popup(scene_bgr, sleep_after=1.0):
                     continue
                 v = self.detect_view(scene_bgr)
                 self._log(f"[SCAN] try {i}/{self.SCAN_RETRY} => {v}")
@@ -965,6 +1019,9 @@ class WorldAutomation:
             return
 
         if self.handle_upgrade_popup(scene_bgr, sleep_after=1.0):
+            return
+        
+        if self.handle_reconnect_popup(scene_bgr, sleep_after=1.0):
             return
 
     def handle_view1(self):
