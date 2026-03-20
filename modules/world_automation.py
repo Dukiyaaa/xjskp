@@ -1206,6 +1206,14 @@ class WorldAutomation:
                 self.set_view(0)
                 return
 
+        # 可能会跳到主页面去
+        if self.is_resource_page_by_feats(feats):
+            self._log("[STATE]当前处于资源页,即将返回招募页")
+            self.click_at(*self.PT["resource_back"])
+            self.set_view(0)
+            time.sleep(0.5)
+            return
+        
         self._log("[STATE]等待房主开启游戏中")
         time.sleep(1)
 
