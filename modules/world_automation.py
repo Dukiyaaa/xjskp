@@ -878,6 +878,7 @@ class WorldAutomation:
             "main_chat_army": self.find_button(scene_bgr, "main_chat_army"),
             "resource": self.find_button(scene_bgr, "resource"),
             "master_left": self.find_button(scene_bgr, "master_left"),
+            "team_exit": self.find_button(scene_bgr, "team_exit"),
             "game_over_return": self.find_button(scene_bgr, "game_over_return"),
 
             "start_game": self.find_button(scene_bgr, "start_game"),
@@ -947,7 +948,7 @@ class WorldAutomation:
         return feats["cross_server"] is not None
 
     def is_team_page_by_feats(self, feats):
-        return feats["master_left"] is not None
+        return feats["master_left"] is not None or feats["team_exit"] is not None
 
     def is_battle_page_by_feats(self, feats):
         return feats["game_has_started"] is not None or feats["chart"] is not None
@@ -1086,7 +1087,7 @@ class WorldAutomation:
             self.stop_clicking()
             self.diff = None
             self.set_view(3)
-            time.sleep(0.5)
+            # time.sleep(0.5)
             return
 
         # 还没来得及判断难度就直接开打了
