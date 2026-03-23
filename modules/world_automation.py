@@ -46,7 +46,7 @@ class WorldAutomation:
         # 模板路径字典，存储多个模板路径
         template_paths = {
             # 主页：开始游戏
-            "start_game": resource_path(r"images\template\main_start_game.png"),
+            "start_game": resource_path(r"images\template\start_game.png"),
             # 主页：聊天框
             "main_chat": resource_path(r"images\template\main_chat.png"),
             # 主页，带红点的聊天框
@@ -85,6 +85,7 @@ class WorldAutomation:
             "invite": resource_path(r"images\template\invite.png"),
             "world_save_flag": resource_path(r"images\template\world_save_flag.png"),
             "fight": resource_path(r"images\template\fight.png"),
+            # "fight_anniversary": resource_path(r"images\template\fight_anniversary.png"),
             "cancel": resource_path(r"images\template\cancel.png"),
             "cancel_time_act": resource_path(r"images\template\cancel_time_act.png"),
             "cross_server": resource_path(r"images\template\cross_server.png"),
