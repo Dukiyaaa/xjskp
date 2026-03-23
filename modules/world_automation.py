@@ -175,7 +175,7 @@ class WorldAutomation:
 
         # ================= 标准画布 ROI =================
         self.ROI = {
-            "team_world_text": (194, 188, 644, 260),
+            "team_world_text": (400, 188, 644, 260),
             "start_game_text": (288, 1186, 492, 1242),
             "team_leave_text": (645, 1188, 698, 1222),
             "in_game_diff_text": (400, 103, 516, 148),
@@ -593,7 +593,8 @@ class WorldAutomation:
 
         roi = self.ROI["team_world_text"]
 
-        for i in range(20):  
+        for i in range(17):  
+            # 暂时只截到了环17
             template_name = f"world_diff_{i + 1}"
 
             found, score, top_left, tpl_hw = self.template_matcher.match_template_in_roi(

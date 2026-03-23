@@ -364,6 +364,8 @@ class AdWatcher:
             self._log("自动体力广告已停止")
             self._emit_power_done(ok, reason)
 
+    
+
 
 if __name__ == "__main__":
     import time
@@ -374,12 +376,11 @@ if __name__ == "__main__":
     watcher = AdWatcher(world_automation, scan_interval=1)
     watcher.set_callbacks(log_cb=print)
 
-    # 你要验证的是“重复看体力广告直到没免费”
-    # 这里直接同步跑，方便看日志和定位问题
+    # 验证的是“重复看体力广告直到没免费”
     watcher.power_running = True
     #
     try:
-        ok = watcher.ad_power(max_rounds=5)  # 保护：最多30次
+        ok = watcher.ad_power(max_rounds=5)  # 保护：最多5次
         print("[TEST] ad_power result:", ok)
     except KeyboardInterrupt:
         print("[TEST] KeyboardInterrupt -> stop")
