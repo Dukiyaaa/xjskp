@@ -114,8 +114,11 @@ class WorldAutomation:
             "world_diff_in_game_19": resource_path(r"images\template\world_diff_in_game_19.png"),
             "world_diff_in_game_20": resource_path(r"images\template\world_diff_in_game_20.png"),
 
+            "game_over_perfect_stone": resource_path(r"images\template\game_over_perfect_stone.png"),
+            "game_over_legendary_stone": resource_path(r"images\template\game_over_legendary_stone.png"),
             "resource": resource_path(r"images\template\resource.png"),
             "reconnect": resource_path(r"images\template\reconnect.png"),
+
             # 其他模板路径...
         }
         self.template_paths = template_paths
@@ -899,6 +902,7 @@ class WorldAutomation:
             "game_over_return": self.find_button(scene_bgr, "game_over_return"),
             "chart": self.find_button(scene_bgr, "chart"),
             "master_left": self.find_button(scene_bgr, "master_left"),
+            "team_exit": self.find_button(scene_bgr, "team_exit"),
         }
 
     def collect_view2_features(self, scene_bgr):
@@ -932,6 +936,8 @@ class WorldAutomation:
             "team_exit": self.find_button(scene_bgr, "team_exit"),
             "game_has_started": self.find_button(scene_bgr, "game_has_started"),
             "game_over_return": self.find_button(scene_bgr, "game_over_return"),
+            "game_over_perfect_stone": self.find_button(scene_bgr, "game_over_perfect_stone"),
+            "game_over_legendary_stone": self.find_button(scene_bgr, "game_over_legendary_stone"),
             "chart": self.find_button(scene_bgr, "chart"),
         }
 
@@ -1243,6 +1249,10 @@ class WorldAutomation:
             # 增加总局数
             self._inc_counter(1)
 
+            if feats["game_over_legendary_stone"]:
+                self._log("[CONGRATULATE] 奖励中出现传说石头!")
+            elif feats["game_over_perfect_stone"]:
+                self._log("[CONGRATULATE] 奖励中出现完美石头!")
             pos = feats["game_over_return"]
             self.click_at_without_hover(pos[0], pos[1])
             time.sleep(2)
@@ -1282,8 +1292,8 @@ class WorldAutomation:
             self.click_at_without_hover(*self.PT["skill_left"])
             time.sleep(0.5)
             # 先锋技能2
-            self.click_at_without_hover(*self.PT["skill_right"])
-            time.sleep(0.5)
+            # self.click_at_without_hover(*self.PT["skill_right"])
+            # time.sleep(0.5)
             # 机甲技能
             self.click_at_without_hover(*self.PT["mecha_skill"])
             time.sleep(0.5)
