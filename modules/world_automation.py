@@ -219,6 +219,8 @@ class WorldAutomation:
         self.SCAN_RETRY_GAP = 3  # 重试间隔（秒）
         self.VIEW_UNKNOWN = -1  # detect_view 识别失败时返回 -1
 
+        # 战斗时点击
+        self.fight_cnt = 0
         if self.HWND == 0:
             raise RuntimeError(f"未找到窗口：{window_name}（FindWindow 失败）")
         else:
@@ -590,26 +592,35 @@ class WorldAutomation:
     def get_world_diff(self, scene_bgr):
         """
         快速检测当前队伍的环球难度
+        优化逻辑：
+        1. 先裁剪一次 ROI
+        2. 模板匹配时，若某个 score > 0.99，直接返回
+        3. 若都没有超过 0.99，则返回最大 score 对应的环数
         """
+        roi = self.ROI["team_world_text"]
+        x, y, w, h = roi
+        roi_img = scene_bgr[y:y + h, x:x + w]
+
         max_score = 0.0
         ret = None
 
-        roi = self.ROI["team_world_text"]
-
-        for i in range(17):  
-            # 暂时只截到了环17
+        for i in range(17):
             template_name = f"world_diff_{i + 1}"
 
-            found, score, top_left, tpl_hw = self.template_matcher.match_template_in_roi(
-                scene_bgr,
+            found, score, top_left, tpl_hw = self.template_matcher.match_template(
+                roi_img,
                 template_name,
-                roi,
-                threshold=0.85
+                threshold=0.97
             )
 
-            if found and score > max_score:
-                max_score = score
-                ret = i + 1
+            if found:
+                if score > 0.99:
+                    # self._log(f"get_world_diff: {template_name} get high score, score={score}")
+                    return i + 1
+
+                if score > max_score:
+                    max_score = score
+                    ret = i + 1
 
         return ret
 
@@ -942,6 +953,10 @@ class WorldAutomation:
         }
 
     def is_home_page_by_feats(self, feats):
+        # if feats["start_game"] is None:
+        #     self._log("start_game button not found")
+        # if feats["fight"] is None: 
+        #     self._log("fight button not found")
         return feats["start_game"] is not None and feats["fight"] is not None
 
     def is_resource_page_by_feats(self, feats):
@@ -1033,6 +1048,7 @@ class WorldAutomation:
         if self.handle_reconnect_popup(scene_bgr, sleep_after=1.0):
             return
 
+        self._log("[STATE]VIEW=0 下未识别出明确页面特征，保持当前状态")
     def handle_view1(self):
         # 跨服聊天
         scene_bgr = self.bkgnd_full_window_screenshot()
@@ -1230,10 +1246,10 @@ class WorldAutomation:
         time.sleep(1.0)
         scene_bgr = self.bkgnd_full_window_screenshot()
 
-        final_diff = self.get_world_diff_in_game(scene_bgr)
-        if final_diff is not None and final_diff != self._game_diff:
-            self._game_diff = final_diff
-            self._log(f"[STATE] 战斗页最终识别难度 = {final_diff}")
+        # final_diff = self.get_world_diff_in_game(scene_bgr)
+        # if final_diff is not None and final_diff != self._game_diff:
+        #     self._game_diff = final_diff
+        #     self._log(f"[STATE] 战斗页最终识别难度 = {final_diff}")
 
         feats = self.collect_view4_features(scene_bgr)
 
@@ -1242,12 +1258,12 @@ class WorldAutomation:
             time.sleep(3)
             self._log("[STATE]战斗结束，回到主页面，继续循环")
 
-            final_diff = self._game_diff
-            self._inc_world_count(final_diff)   # 先记难度统计
-            self._game_end()                    # 再清空本局数据
+            # final_diff = self._game_diff
+            # self._inc_world_count(final_diff)   # 先记难度统计
+            # self._game_end()                    # 再清空本局数据
 
-            # 增加总局数
-            self._inc_counter(1)
+            # # 增加总局数
+            # self._inc_counter(1)
 
             if feats["game_over_legendary_stone"]:
                 self._log("[CONGRATULATE] 奖励中出现传说石头!")
@@ -1268,6 +1284,17 @@ class WorldAutomation:
                 return
 
             if feats["team_exit"]:
+                final_diff = self.get_world_diff(scene_bgr)
+                if final_diff is not None and final_diff != self._game_diff:
+                    self._game_diff = final_diff
+                    self._log(f"[STATE] 最终识别难度 = {final_diff}")
+
+                final_diff = self._game_diff
+                self._inc_world_count(final_diff)   # 先记难度统计
+                self._game_end()                    # 再清空本局数据
+                # 增加总局数
+                self._inc_counter(1)
+                
                 self._log("[STATE]已自动退回到组队页面,准备退回到主页面")
                 self._log("[STATE]当队里只有一人时,退出只有一步,直接点击左下角退出键")
 
@@ -1279,7 +1306,7 @@ class WorldAutomation:
                 self.set_view(0)
                 return
 
-            self._log("[STATE]战斗结束后未识别出明确页面特征，保持当前状态")
+            self._log("[STATE]战斗结束后未识别出明确页面特征，保持当前状态") #有时退回到了组队页面但没识别出来，会出问题
             return
 
         # -------- 情况2：战斗仍在进行中 --------
@@ -1289,15 +1316,18 @@ class WorldAutomation:
             self.click_at_without_hover(*self.PT["skill_center"])
             time.sleep(0.5)
             # 先锋技能1
-            self.click_at_without_hover(*self.PT["skill_left"])
-            time.sleep(0.5)
-            # 先锋技能2
-            # self.click_at_without_hover(*self.PT["skill_right"])
-            # time.sleep(0.5)
-            # 机甲技能
-            self.click_at_without_hover(*self.PT["mecha_skill"])
-            time.sleep(0.5)
-
+            self.fight_cnt += 1
+            if self.fight_cnt % 10 == 0:
+                self.fight_cnt = 0
+                self.click_at_without_hover(*self.PT["skill_left"])
+                # time.sleep(0.5)
+                # 先锋技能2
+                # self.click_at_without_hover(*self.PT["skill_right"])
+                time.sleep(0.5)
+                # 机甲技能
+                self.click_at_without_hover(*self.PT["mecha_skill"])
+                # time.sleep(0.5)
+            
         time.sleep(2)
 # ---------------------- 主程序 ---------------------
     def word_click(self):
