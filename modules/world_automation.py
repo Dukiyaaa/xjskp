@@ -178,6 +178,21 @@ class WorldAutomation:
 
         # ================= 标准画布 ROI =================
         self.ROI = {
+            # 主页
+            "roi_main_chat": (687, 799, 784, 896),
+            "roi_resource" : (271, 457, 514, 518),
+            "roi_start_game": (237, 1164, 545, 1268),
+            "roi_fight": (299, 1345,476, 1489),
+
+            # 聊天页
+            # "roi_chat_recruit": 
+            # 组队页
+            "roi_master_left": (504, 1185, 589, 1271),
+            "roi_team_exit": (20, 1347, 150, 1474),
+
+            # 战斗页
+            "roi_game_over_return": (348, 1292, 442, 1337),
+
             "team_world_text": (400, 188, 644, 260),
             "start_game_text": (288, 1186, 492, 1242),
             "team_leave_text": (645, 1188, 698, 1222),
@@ -372,20 +387,29 @@ class WorldAutomation:
 
         self._log("[WORLD] 环球统计已重置为 0")
 
-    def find_button(self, scene_bgr, template_name):
+    def find_button(self, scene_bgr, template_name, roi=None, threshold=0.85):
         """
         使用模板匹配查找按钮
         :param scene_bgr: 截图图像
         :param template_name: 模板名称
+        :param roi: None / ROI键名 / (x1, y1, x2, y2)
+        :param threshold: 匹配阈值
         :return: 按钮位置 (x, y) 或 None
         """
-        # 传递模板名称到模板匹配方法
-        found, score, top_left, tpl_hw = self.template_matcher.match_template(scene_bgr, template_name, threshold=0.85)
+        if roi is None:
+            found, score, top_left, tpl_hw = self.template_matcher.match_template(
+                scene_bgr, template_name, threshold=threshold
+            )
+        else:
+            roi_rect = self.ROI[roi] if isinstance(roi, str) else roi
+            found, score, top_left, tpl_hw = self.template_matcher.match_template_in_roi(
+                scene_bgr, template_name, roi_rect, threshold=threshold
+            )
+
         if found:
             center_x, center_y = self.template_matcher.get_center_position(top_left, tpl_hw)
             return center_x, center_y
-        # else:
-            # self._log(f"[DEBUG] 没有找到该标志,匹配得分为:{score}")
+
         return None
     # ===================== GUI友好：对外控制接口（第1步） =====================
     def set_callbacks(self, log_cb=None, counter_cb=None, current_page_cb=None, world_counts_cb=None):
@@ -787,32 +811,6 @@ class WorldAutomation:
         time.sleep(sleep_after)
         return True
 
-    # 只做页面判断，不做点击行为
-    def is_home_page(self, scene_bgr):
-        # 通过主页的开始游戏和底部的战斗按钮来判断是否为主页
-        start_btn = self.find_button(scene_bgr, "start_game")
-        fight_btn = self.find_button(scene_bgr, "fight")
-        return start_btn is not None and fight_btn is not None
-
-    def is_chat_page(self, scene_bgr):
-        # 通过招募按钮来判断是否在跨服聊天
-        return self.find_button(scene_bgr, "chat_recruit") is not None
-
-    def is_recruit_page(self, scene_bgr):
-        # 通过跨服聊天来判断是否在招募页面
-        return self.find_button(scene_bgr, "cross_server") is not None
-
-    def is_team_page(self, scene_bgr):
-        # 通过底部的返回键来判断是否进入了组队页面
-        return self.find_button(scene_bgr, "team_exit") is not None
-
-    def is_battle_page(self, scene_bgr):
-        # 通过暂停按钮和伤害统计表来判断是否在战斗界面
-        return (
-                self.find_button(scene_bgr, "game_has_started") is not None
-                or self.find_button(scene_bgr, "chart") is not None
-        )
-
     def detect_view(self, scene_bgr: np.ndarray) -> int:
         self._log('[STATE]触发定时检查当前页面归属')
 
@@ -827,24 +825,26 @@ class WorldAutomation:
         if self.detect_reconnect_popup(scene_bgr)["is_reconnect"]:
             self._log('[STATE]当前存在重连页面遮挡，暂不判页')
             return self.VIEW_UNKNOWN
-        
-        if self.is_battle_page(scene_bgr):
+
+        feats = self.collect_scan_features(scene_bgr)
+
+        if self.is_battle_page_by_feats(feats):
             self._log('[STATE]当前页面为战斗页面')
             return 4
 
-        if self.is_team_page(scene_bgr):
+        if self.is_team_page_by_feats(feats):
             self._log('[STATE]当前页面为组队页面')
             return 3
 
-        if self.is_recruit_page(scene_bgr):
+        if self.is_recruit_page_by_feats(feats):
             self._log('[STATE]当前页面为招募页面')
             return 2
 
-        if self.is_chat_page(scene_bgr):
+        if self.is_chat_page_by_feats(feats):
             self._log('[STATE]当前页面为聊天页面')
             return 1
 
-        if self.is_home_page(scene_bgr):
+        if self.is_home_page_by_feats(feats):
             self._log('[STATE]当前页面为主页面')
             return 0
 
@@ -888,17 +888,19 @@ class WorldAutomation:
     # 采集特征，返回按钮位置
     def collect_view0_features(self, scene_bgr):
         return {
-            "main_chat": self.find_button(scene_bgr, "main_chat"),
-            "main_chat_army": self.find_button(scene_bgr, "main_chat_army"),
-            "resource": self.find_button(scene_bgr, "resource"),
-            "master_left": self.find_button(scene_bgr, "master_left"),
-            "team_exit": self.find_button(scene_bgr, "team_exit"),
+            "main_chat": self.find_button(scene_bgr, "main_chat", roi="roi_main_chat"),
+            "main_chat_army": self.find_button(scene_bgr, "main_chat_army", roi="roi_main_chat"),
+            "resource": self.find_button(scene_bgr, "resource", roi="roi_resource"),
+            "master_left": self.find_button(scene_bgr, "master_left", roi="roi_master_left"),
+            "team_exit": self.find_button(scene_bgr, "team_exit", roi="roi_team_exit"),
             "game_over_return": self.find_button(scene_bgr, "game_over_return"),
 
-            "start_game": self.find_button(scene_bgr, "start_game"),
-            "fight": self.find_button(scene_bgr, "fight"),
+            "start_game": self.find_button(scene_bgr, "start_game", roi="roi_start_game"),
+            "fight": self.find_button(scene_bgr, "fight", roi="roi_fight"),
+            # 下面不需要roi
             "chat_recruit": self.find_button(scene_bgr, "chat_recruit"),
             "cross_server": self.find_button(scene_bgr, "cross_server"),
+
             "game_has_started": self.find_button(scene_bgr, "game_has_started"),
             "chart": self.find_button(scene_bgr, "chart"),
         }
@@ -907,20 +909,21 @@ class WorldAutomation:
         return {
             "chat_recruit": self.find_button(scene_bgr, "chat_recruit"),
             "cross_server": self.find_button(scene_bgr, "cross_server"),
-            "start_game": self.find_button(scene_bgr, "start_game"),
-            "fight": self.find_button(scene_bgr, "fight"),
+            "start_game": self.find_button(scene_bgr, "start_game", roi="roi_start_game"),
+            "fight": self.find_button(scene_bgr, "fight", roi="roi_fight"),
             "game_has_started": self.find_button(scene_bgr, "game_has_started"),
             "game_over_return": self.find_button(scene_bgr, "game_over_return"),
             "chart": self.find_button(scene_bgr, "chart"),
-            "master_left": self.find_button(scene_bgr, "master_left"),
-            "team_exit": self.find_button(scene_bgr, "team_exit"),
+            "master_left": self.find_button(scene_bgr, "master_left", roi="roi_master_left"),
+            "team_exit": self.find_button(scene_bgr, "team_exit", roi="roi_team_exit"),
         }
-
+    
     def collect_view2_features(self, scene_bgr):
         return {
-            "team_exit": self.find_button(scene_bgr, "team_exit"),
-            "start_game": self.find_button(scene_bgr, "start_game"),
-            "fight": self.find_button(scene_bgr, "fight"),
+            "team_exit": self.find_button(scene_bgr, "team_exit", roi="roi_team_exit"),
+            "master_left": self.find_button(scene_bgr, "master_left", roi="roi_master_left"),
+            "start_game": self.find_button(scene_bgr, "start_game", roi="roi_start_game"),
+            "fight": self.find_button(scene_bgr, "fight", roi="roi_fight"),
             "game_has_started": self.find_button(scene_bgr, "game_has_started"),
             "game_over_return": self.find_button(scene_bgr, "game_over_return"),
             "chart": self.find_button(scene_bgr, "chart"),
@@ -930,21 +933,22 @@ class WorldAutomation:
 
     def collect_view3_features(self, scene_bgr):
         return {
-            "start_game": self.find_button(scene_bgr, "start_game"),
-            "resource": self.find_button(scene_bgr, "resource"),
-            "fight": self.find_button(scene_bgr, "fight"),
+            "start_game": self.find_button(scene_bgr, "start_game", roi="roi_start_game"),
+            "resource": self.find_button(scene_bgr, "resource", roi="roi_resource"),
+            "fight": self.find_button(scene_bgr, "fight", roi="roi_fight"),
             "game_has_started": self.find_button(scene_bgr, "game_has_started"),
             "game_over_return": self.find_button(scene_bgr, "game_over_return"),
             "chart": self.find_button(scene_bgr, "chart"),
-            "master_left": self.find_button(scene_bgr, "master_left"),
-            "team_exit": self.find_button(scene_bgr, "team_exit"),
+            "master_left": self.find_button(scene_bgr, "master_left", roi="roi_master_left"),
+            "team_exit": self.find_button(scene_bgr, "team_exit", roi="roi_team_exit"),
         }
 
     def collect_view4_features(self, scene_bgr):
         return {
-            "start_game": self.find_button(scene_bgr, "start_game"),
-            "fight": self.find_button(scene_bgr, "fight"),
-            "team_exit": self.find_button(scene_bgr, "team_exit"),
+            "start_game": self.find_button(scene_bgr, "start_game", roi="roi_start_game"),
+            "fight": self.find_button(scene_bgr, "fight", roi="roi_fight"),
+            "team_exit": self.find_button(scene_bgr, "team_exit", roi="roi_team_exit"),
+            "master_left": self.find_button(scene_bgr, "master_left", roi="roi_master_left"),
             "game_has_started": self.find_button(scene_bgr, "game_has_started"),
             "game_over_return": self.find_button(scene_bgr, "game_over_return"),
             "game_over_perfect_stone": self.find_button(scene_bgr, "game_over_perfect_stone"),
@@ -952,27 +956,38 @@ class WorldAutomation:
             "chart": self.find_button(scene_bgr, "chart"),
         }
 
+    def collect_scan_features(self, scene_bgr):
+        return {
+            "start_game": self.find_button(scene_bgr, "start_game", roi="roi_start_game"),
+            "fight": self.find_button(scene_bgr, "fight", roi="roi_fight"),
+
+            "chat_recruit": self.find_button(scene_bgr, "chat_recruit"),
+            "cross_server": self.find_button(scene_bgr, "cross_server"),
+
+            "master_left": self.find_button(scene_bgr, "master_left", roi="roi_master_left"),
+            "team_exit": self.find_button(scene_bgr, "team_exit", roi="roi_team_exit"),
+
+            "game_has_started": self.find_button(scene_bgr, "game_has_started"),
+            "chart": self.find_button(scene_bgr, "chart"),
+        }
+
     def is_home_page_by_feats(self, feats):
-        # if feats["start_game"] is None:
-        #     self._log("start_game button not found")
-        # if feats["fight"] is None: 
-        #     self._log("fight button not found")
-        return feats["start_game"] is not None and feats["fight"] is not None
+        return feats.get("start_game") is not None and feats.get("fight") is not None
 
     def is_resource_page_by_feats(self, feats):
-        return feats["resource"] is not None
-    
+        return feats.get("resource") is not None
+
     def is_chat_page_by_feats(self, feats):
-        return feats["chat_recruit"] is not None
+        return feats.get("chat_recruit") is not None
 
     def is_recruit_page_by_feats(self, feats):
-        return feats["cross_server"] is not None
+        return feats.get("cross_server") is not None
 
     def is_team_page_by_feats(self, feats):
-        return feats["master_left"] is not None or feats["team_exit"] is not None
+        return feats.get("master_left") is not None or feats.get("team_exit") is not None
 
     def is_battle_page_by_feats(self, feats):
-        return feats["game_has_started"] is not None or feats["chart"] is not None
+        return feats.get("game_has_started") is not None or feats.get("chart") is not None
 
     def handle_view0(self):
         # 主页
@@ -1023,15 +1038,6 @@ class WorldAutomation:
             self._game_begin(self.diff)
             self.set_view(4)
             return
-
-        # if feats["master_left"]:
-        #     self._log("[STATE]当前处于单人组队界面,即将点击左下角返回键退回到首页")
-        #     leave1_x, leave1_y = self.PT["leave_step1"]
-        #     self.click_at_without_hover(leave1_x, leave1_y)
-        #     time.sleep(1)
-        #     self.diff = None
-        #     self.set_view(0)
-        #     return
 
         if feats["game_over_return"]:
             self._log("[STATE]当前处于战斗结算界面,即将返回")
@@ -1093,6 +1099,7 @@ class WorldAutomation:
     def handle_view2(self):
         # 招募页
         scene_bgr = self.bkgnd_full_window_screenshot()
+        feats = self.collect_view2_features(scene_bgr)
 
         # 初始化招募确认按钮坐标（只算一次）
         if self._confirm_xy is None:
@@ -1101,10 +1108,8 @@ class WorldAutomation:
         # 招募页里开始连点（只会启动一次）
         self.start_clicking()
 
-        feats = self.collect_view2_features(scene_bgr)
-
         # 已进入组队界面
-        if feats["team_exit"]:
+        if self.is_team_page_by_feats(feats):
             self._log("[STATE]已进入组队界面，停止连点")
             self.stop_clicking()
             self.diff = None
@@ -1246,11 +1251,6 @@ class WorldAutomation:
         time.sleep(1.0)
         scene_bgr = self.bkgnd_full_window_screenshot()
 
-        # final_diff = self.get_world_diff_in_game(scene_bgr)
-        # if final_diff is not None and final_diff != self._game_diff:
-        #     self._game_diff = final_diff
-        #     self._log(f"[STATE] 战斗页最终识别难度 = {final_diff}")
-
         feats = self.collect_view4_features(scene_bgr)
 
         # -------- 情况1：战斗结束，出现返回按钮 --------
@@ -1271,7 +1271,7 @@ class WorldAutomation:
                 self._log("[CONGRATULATE] 奖励中出现完美石头!")
             pos = feats["game_over_return"]
             self.click_at_without_hover(pos[0], pos[1])
-            time.sleep(2)
+            time.sleep(5)
 
             # 重新截图，判断是回到主页面还是组队页面
             scene_bgr = self.bkgnd_full_window_screenshot()
@@ -1283,7 +1283,7 @@ class WorldAutomation:
                 self.set_view(0)
                 return
 
-            if feats["team_exit"]:
+            if self.is_team_page_by_feats(feats):
                 final_diff = self.get_world_diff(scene_bgr)
                 if final_diff is not None and final_diff != self._game_diff:
                     self._game_diff = final_diff
