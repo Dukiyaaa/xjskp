@@ -21,7 +21,7 @@ def resource_path(rel_path: str) -> str:
 
 
 class TowerAutomation:
-    def __init__(self, window_name="向僵尸开炮"):
+    def __init__(self, window_name="向僵尸开炮", auto_resize_window=False):
         template_paths = {
             "challenge": resource_path(r"images\template\challenge.png"),
             "already_auto_selected": resource_path(r"images\template\already_auto_selected.png"),
@@ -72,9 +72,11 @@ class TowerAutomation:
         if self.HWND == 0:
             raise RuntimeError(f"未找到窗口：{window_name}（FindWindow 失败）")
 
-        win32gui.MoveWindow(
-            self.HWND, self.X_POS, self.Y_POS, self.WIDTH, self.HEIGHT, True
-        )
+        if auto_resize_window:
+            win32gui.MoveWindow(
+                self.HWND, self.X_POS, self.Y_POS, self.WIDTH, self.HEIGHT, True
+            )
+
         if win32gui.IsIconic(self.HWND):
             win32gui.ShowWindow(self.HWND, win32con.SW_RESTORE)
             time.sleep(0.2)

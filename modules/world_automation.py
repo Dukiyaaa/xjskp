@@ -38,7 +38,7 @@ def resource_path(rel_path: str) -> str:
 
 # ---------------------- 环球抢票类，包含抢票、判断等级、退出队伍 ----------------------
 class WorldAutomation:
-    def __init__(self, window_name="向僵尸开炮"):
+    def __init__(self, window_name="向僵尸开炮", auto_resize_window=False):
         # 用于记录每个“环球救援”任务的计数器
         self.world_counts = {f"world_{i + 1}": 0 for i in range(20)}
         self.world_counts["world_none"] = 0  # 初始化 21 个环球救援任务的计数器
@@ -239,7 +239,11 @@ class WorldAutomation:
         if self.HWND == 0:
             raise RuntimeError(f"未找到窗口：{window_name}（FindWindow 失败）")
         else:
-            win32gui.MoveWindow(self.HWND, self.X_POS, self.Y_POS, self.WIDTH, self.HEIGHT, True)
+            if auto_resize_window:
+                win32gui.MoveWindow(
+                    self.HWND, self.X_POS, self.Y_POS, self.WIDTH, self.HEIGHT, True
+                )
+
             if win32gui.IsIconic(self.HWND):
                 win32gui.ShowWindow(self.HWND, win32con.SW_RESTORE)
                 time.sleep(0.2)

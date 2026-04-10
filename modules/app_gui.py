@@ -48,6 +48,9 @@ class AppGUI:
 
         self.tower_automation = None
         self.txt_tower_log = None
+
+        # 本次程序运行中，是否已经执行过一次缩窗
+        self.window_resized_once = False
         # ---- Style ----
         self._build_style()
 
@@ -385,6 +388,7 @@ class AppGUI:
         ttk.Label(
             parent,
             text=
+            "v3.0:加入自动爬塔模块,目前在窗口初始化上与抢环模块有一点冲突\n"
             "v2.0:优化了环球难度判断逻辑,现在判断比之前准确一些;加入环球统计功能\n"
             "v1.6:加入自动看广告模块,目前仅支持自动看体力广告,但测试还不够多\n"
             "v1.5:加入中间词条选择开关;优化遇到广告时的处理方法;战斗界面判定条件优化,",
@@ -508,7 +512,10 @@ class AppGUI:
         # Create module instance if needed
         if self.automation is None:
             try:
-                self.automation = WorldAutomation(window_name=window_name)
+                self.automation = WorldAutomation(
+                    window_name=window_name,
+                    auto_resize_window=self._consume_resize_once_flag()
+                )
                 # set callbacks once
                 self.automation.set_callbacks(
                     log_cb=self.log_cb,
@@ -715,7 +722,10 @@ class AppGUI:
 
         if self.tower_automation is None:
             try:
-                self.tower_automation = TowerAutomation(window_name=window_name)
+                self.tower_automation = TowerAutomation(
+                    window_name=window_name,
+                    auto_resize_window=self._consume_resize_once_flag()
+                )
                 self.tower_automation.set_callbacks(
                     log_cb=self.log_cb,
                     current_page_cb=self.current_page_cb
@@ -772,7 +782,16 @@ class AppGUI:
             self._push_log("INFO", "[GUI] 爬塔日志已复制到剪贴板")
         except Exception as e:
             self._push_log("ERROR", f"[GUI] 复制爬塔日志失败：{e}")
-        
+    
+    def _consume_resize_once_flag(self) -> bool:
+        """
+        本次程序运行中只允许第一次返回 True。
+        后续再调用都返回 False。
+        """
+        if self.window_resized_once:
+            return False
+        self.window_resized_once = True
+        return True
 def main():
     root = tk.Tk()
     # 强行固定缩放系数
