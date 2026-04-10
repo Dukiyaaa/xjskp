@@ -19,10 +19,17 @@ from tkinter import ttk, messagebox
 
 try:
     from world_automation import *
-    _import_err = None
-except Exception as e:
+    _world_import_err = None
+except Exception:
     WorldAutomation = None
-    _import_err = traceback.format_exc()
+    _world_import_err = traceback.format_exc()
+
+try:
+    from tower_automation import *
+    _tower_import_err = None
+except Exception:
+    TowerAutomation = None
+    _tower_import_err = traceback.format_exc()
 
 class AppGUI:
     def __init__(self, root: tk.Tk):
@@ -38,6 +45,9 @@ class AppGUI:
         self.automation = None
         self.ad_watcher = None
         self.txt_ads_log = None
+
+        self.tower_automation = None
+        self.txt_tower_log = None
         # ---- Style ----
         self._build_style()
 
@@ -87,6 +97,9 @@ class AppGUI:
         self.tab_world = ttk.Frame(self.nb, padding=12)
         self.nb.add(self.tab_world, text="环球抢环")
 
+        self.tab_tower = ttk.Frame(self.nb, padding=12)
+        self.nb.add(self.tab_tower, text="自动爬塔")
+
         # 新增：看广告
         self.tab_ads = ttk.Frame(self.nb, padding=12)
         self.nb.add(self.tab_ads, text="自动看广告")
@@ -95,6 +108,7 @@ class AppGUI:
         self.nb.add(self.tab_about, text="设置/关于")
 
         self._build_world_tab(self.tab_world)
+        self._build_tower_tab(self.tab_tower)
         self._build_ads_tab(self.tab_ads)
         self._build_about_tab(self.tab_about)
 
@@ -248,6 +262,60 @@ class AppGUI:
         ttk.Button(bottom, text="清空日志", command=self.on_clear_log).pack(side="left")
         ttk.Button(bottom, text="复制日志", command=self.on_copy_log).pack(side="left", padx=8)
 
+    def _build_tower_tab(self, parent: ttk.Frame):
+        left = ttk.Frame(parent)
+        left.pack(side="left", fill="y", padx=(0, 12))
+
+        right = ttk.Frame(parent)
+        right.pack(side="right", fill="both", expand=True)
+
+        grp = ttk.LabelFrame(left, text="爬塔控制", padding=10)
+        grp.pack(fill="x")
+
+        ttk.Label(grp, text="窗口名（FindWindow）").grid(row=0, column=0, sticky="w", pady=(0, 6))
+        self.var_tower_window_name = tk.StringVar(value="向僵尸开炮")
+        ttk.Entry(grp, textvariable=self.var_tower_window_name, width=22).grid(
+            row=0, column=1, sticky="w", pady=(0, 6)
+        )
+
+        btn_row = ttk.Frame(grp)
+        btn_row.grid(row=1, column=0, columnspan=2, sticky="we", pady=(6, 0))
+        btn_row.columnconfigure(0, weight=1)
+        btn_row.columnconfigure(1, weight=1)
+
+        self.btn_tower_start = ttk.Button(btn_row, text="启动", command=self.on_tower_start)
+        self.btn_tower_start.grid(row=0, column=0, sticky="we", padx=(0, 6))
+
+        self.btn_tower_stop = ttk.Button(btn_row, text="停止", command=self.on_tower_stop, state="disabled")
+        self.btn_tower_stop.grid(row=0, column=1, sticky="we")
+
+        grp2 = ttk.LabelFrame(left, text="状态", padding=10)
+        grp2.pack(fill="x", pady=(12, 0))
+
+        self.var_tower_running = tk.StringVar(value="未运行")
+        ttk.Label(grp2, text="运行状态：").grid(row=0, column=0, sticky="w")
+        ttk.Label(grp2, textvariable=self.var_tower_running).grid(row=0, column=1, sticky="w")
+
+        log_grp = ttk.LabelFrame(right, text="爬塔日志输出", padding=10)
+        log_grp.pack(fill="both", expand=True)
+
+        self.txt_tower_log = tk.Text(log_grp, wrap="word", height=24)
+        self.txt_tower_log.pack(side="left", fill="both", expand=True)
+
+        sb = ttk.Scrollbar(log_grp, orient="vertical", command=self.txt_tower_log.yview)
+        sb.pack(side="right", fill="y")
+        self.txt_tower_log.configure(yscrollcommand=sb.set)
+
+        self.txt_tower_log.tag_configure("INFO", foreground="#1f6feb")
+        self.txt_tower_log.tag_configure("WARN", foreground="#b58900")
+        self.txt_tower_log.tag_configure("ERROR", foreground="#d73a49")
+        self.txt_tower_log.tag_configure("DEBUG", foreground="#6a737d")
+
+        bottom = ttk.Frame(right)
+        bottom.pack(fill="x", pady=(10, 0))
+        ttk.Button(bottom, text="清空日志", command=self.on_clear_tower_log).pack(side="left")
+        ttk.Button(bottom, text="复制日志", command=self.on_copy_tower_log).pack(side="left", padx=8)
+        
     def _build_ads_tab(self, parent: ttk.Frame):
         left = ttk.Frame(parent)
         left.pack(side="left", fill="y", padx=(0, 12))
@@ -393,12 +461,17 @@ class AppGUI:
         tag = level if level in ("INFO", "WARN", "ERROR", "DEBUG") else "INFO"
 
         s = msg.lstrip()
-        # 抢环日志
+
         if s.startswith("[WORLD]") or s.startswith("[GUI]"):
             self.txt_log.insert("end", line, tag)
             self.txt_log.see("end")
-        # 广告日志
-        if s.startswith("[AD]"):
+
+        elif s.startswith("[TOWER]"):
+            if self.txt_tower_log is not None:
+                self.txt_tower_log.insert("end", line, tag)
+                self.txt_tower_log.see("end")
+
+        elif s.startswith("[AD]"):
             if self.txt_ads_log is not None:
                 self.txt_ads_log.insert("end", line, tag)
                 self.txt_ads_log.see("end")
@@ -537,14 +610,20 @@ class AppGUI:
             self._push_log("ERROR", f"[GUI] 复制广告日志失败：{e}")
 
     def on_close(self):
-        # Graceful stop
         try:
             if self.automation is not None:
                 self.automation.stop()
-                # Give a tiny time slice to let threads settle (non-blocking)
                 time.sleep(0.05)
         except Exception:
             pass
+
+        try:
+            if self.tower_automation is not None:
+                self.tower_automation.stop()
+                time.sleep(0.05)
+        except Exception:
+            pass
+
         self.root.destroy()
 
     def on_toggle_mid_entry_click(self):
@@ -624,6 +703,76 @@ class AppGUI:
         self.btn_ads_power_start.configure(state="normal")
         self.btn_ads_power_stop.configure(state="disabled")
 
+    def on_tower_start(self):
+        if TowerAutomation is None:
+            messagebox.showerror("错误", "TowerAutomation 未导入成功，无法启动。请检查 tower_automation.py。")
+            return
+
+        window_name = self.var_tower_window_name.get().strip()
+        if not window_name:
+            messagebox.showwarning("提示", "窗口名不能为空。")
+            return
+
+        if self.tower_automation is None:
+            try:
+                self.tower_automation = TowerAutomation(window_name=window_name)
+                self.tower_automation.set_callbacks(
+                    log_cb=self.log_cb,
+                    current_page_cb=self.current_page_cb
+                )
+                self._push_log("INFO", f"[GUI] 已初始化 TowerAutomation(window_name='{window_name}')")
+            except Exception as e:
+                tb = traceback.format_exc()
+                self._push_log("ERROR", f"[GUI] 初始化 TowerAutomation 失败：{e}\n{tb}")
+                messagebox.showerror("初始化失败", f"{e}")
+                self.tower_automation = None
+                return
+
+        try:
+            self.tower_automation.start(
+                log_cb=self.log_cb,
+                current_page_cb=self.current_page_cb
+            )
+            self.var_tower_running.set("运行中")
+            self.btn_tower_start.configure(state="disabled")
+            self.btn_tower_stop.configure(state="normal")
+            self._push_log("INFO", "[GUI] 爬塔模块已启动")
+        except Exception as e:
+            tb = traceback.format_exc()
+            self._push_log("ERROR", f"[GUI] 启动 TowerAutomation 失败：{e}\n{tb}")
+            messagebox.showerror("启动失败", f"{e}")
+
+
+    def on_tower_stop(self):
+        if self.tower_automation is None:
+            return
+        try:
+            self.tower_automation.stop()
+            self.var_tower_running.set("未运行")
+            self.btn_tower_start.configure(state="normal")
+            self.btn_tower_stop.configure(state="disabled")
+            self._push_log("INFO", "[GUI] 已请求停止爬塔模块")
+        except Exception as e:
+            tb = traceback.format_exc()
+            self._push_log("ERROR", f"[GUI] tower stop() 异常：{e}\n{tb}")
+
+
+    def on_clear_tower_log(self):
+        if self.txt_tower_log is not None:
+            self.txt_tower_log.delete("1.0", "end")
+
+
+    def on_copy_tower_log(self):
+        if self.txt_tower_log is None:
+            return
+        try:
+            content = self.txt_tower_log.get("1.0", "end-1c")
+            self.root.clipboard_clear()
+            self.root.clipboard_append(content)
+            self._push_log("INFO", "[GUI] 爬塔日志已复制到剪贴板")
+        except Exception as e:
+            self._push_log("ERROR", f"[GUI] 复制爬塔日志失败：{e}")
+        
 def main():
     root = tk.Tk()
     # 强行固定缩放系数
