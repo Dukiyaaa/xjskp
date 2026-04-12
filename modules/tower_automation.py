@@ -48,6 +48,9 @@ class TowerAutomation:
         self.BASE_W, self.BASE_H = 774, 1487
 
         self.PT = {
+            "base": (508, 1421),
+            "hall": (171, 696),
+            "hall_challenge": (519, 1264),
             "enter_main_tower": (411, 511),
             "auto_select": (318, 1124),
         }
@@ -259,10 +262,42 @@ class TowerAutomation:
             return center_x, center_y
         return None
 
+    def swipe_vertical(self, x, y_start, y_end, step_delay=0.01, hold_delay=0.03, steps=12):
+        """
+        模拟竖直滑动。
+        - x: 滑动时的横坐标（基准坐标系）
+        - y_start: 起点纵坐标（基准坐标系）
+        - y_end: 终点纵坐标（基准坐标系）
+        - 如果要“页面往下翻”，通常要做“手指上滑”，也就是 y_start > y_end
+        """
+        x_m, y_start_m = self._map_norm_to_client(x, y_start)
+        _, y_end_m = self._map_norm_to_client(x, y_end)
+
+        lparam_down = win32api.MAKELONG(x_m, y_start_m)
+        win32api.PostMessage(self.HWND, win32con.WM_LBUTTONDOWN, win32con.MK_LBUTTON, lparam_down)
+        time.sleep(hold_delay)
+
+        for i in range(1, steps + 1):
+            y_cur = int(y_start_m + (y_end_m - y_start_m) * i / steps)
+            lparam_move = win32api.MAKELONG(x_m, y_cur)
+            win32api.PostMessage(self.HWND, win32con.WM_MOUSEMOVE, win32con.MK_LBUTTON, lparam_move)
+            time.sleep(step_delay)
+
+        lparam_up = win32api.MAKELONG(x_m, y_end_m)
+        win32api.PostMessage(self.HWND, win32con.WM_LBUTTONUP, 0, lparam_up)
+        
     def handle_view0(self):
         self._log("[STATE] 初始塔页，进入主塔")
+        self.click_at_without_hover(*self.PT["base"])
+        time.sleep(1.0)
+        self.click_at_without_hover(*self.PT["hall"])
+        time.sleep(2.0)
+        self.swipe_vertical(x=390, y_start=1200, y_end=500)
+        time.sleep(1.0)
+        self.click_at_without_hover(*self.PT["hall_challenge"])
+        time.sleep(1.0)
         self.click_at_without_hover(*self.PT["enter_main_tower"])
-        time.sleep(0.5)
+        time.sleep(1.0)
         self.set_view(1)
 
     def collect_view1_features(self, scene_bgr):
