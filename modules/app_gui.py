@@ -49,6 +49,13 @@ class AppGUI:
         self.tower_automation = None
         self.txt_tower_log = None
 
+        # 任务队列模块
+        self.task_queue = []              # 队列数据
+        self.queue_running = False        # 队列是否在运行
+        self.queue_current_index = -1     # 当前跑到哪个任务
+        self.queue_after_id = None        # after轮询句柄
+        self.txt_queue_log = None         # 队列日志框
+
         # 本次程序运行中，是否已经执行过一次缩窗
         self.window_resized_once = False
         # ---- Style ----
@@ -106,6 +113,10 @@ class AppGUI:
         # 新增：看广告
         self.tab_ads = ttk.Frame(self.nb, padding=12)
         self.nb.add(self.tab_ads, text="自动看广告")
+
+        # 任务队列
+        self.tab_queue = ttk.Frame(self.nb, padding=12)
+        self.nb.add(self.tab_queue, text="任务队列")
 
         self.tab_about = ttk.Frame(self.nb, padding=12)
         self.nb.add(self.tab_about, text="设置/关于")
@@ -176,6 +187,15 @@ class AppGUI:
             command=self.on_toggle_mid_entry_click
         )
         self.chk_mid_entry.grid(row=4, column=0, columnspan=2, sticky="we", pady=(10, 0))
+
+        # 仅接受邀请模式开关
+        self.var_invite_only = tk.BooleanVar(value=False)
+        self.chk_invite_only = ttk.Checkbutton(
+            grp,
+            text="仅接受邀请（勾选后不主动抢环，只接收并判断邀请）",
+            variable=self.var_invite_only
+        )
+        self.chk_invite_only.grid(row=5, column=0, columnspan=2, sticky="we", pady=(8, 0))
 
         # Counter display
         grp2 = ttk.LabelFrame(left, text="状态", padding=10)
@@ -509,6 +529,8 @@ class AppGUI:
             messagebox.showwarning("提示", "连点间隔必须是大于0的小数，例如 0.03")
             return
 
+        invite_only = self.var_invite_only.get()
+
         # Create module instance if needed
         if self.automation is None:
             try:
@@ -544,6 +566,7 @@ class AppGUI:
             self.automation._min_click_interval = click_interval
             self.automation.start(
                 expect_diff=expect_diff,
+                invite_only=invite_only,
                 log_cb=self.log_cb,
                 current_page_cb=self.current_page_cb,
                 counter_cb=self.counter_cb,

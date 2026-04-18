@@ -119,6 +119,25 @@ class WorldAutomation:
             "resource": resource_path(r"images\template\resource.png"),
             "reconnect": resource_path(r"images\template\reconnect.png"),
 
+
+            "copy_invitation": resource_path(r"images\template\copy_invitation.png"),
+            "team_invitation": resource_path(r"images\template\team_invitation.png"),
+            "team_invitation_accept_btn": resource_path(r"images\template\team_invitation_accept_btn.png"),
+            "team_invitation_world_diff_1": resource_path(r"images\template\team_invitation_world_diff_1.png"),
+            "team_invitation_world_diff_2": resource_path(r"images\template\team_invitation_world_diff_2.png"),
+            "team_invitation_world_diff_3": resource_path(r"images\template\team_invitation_world_diff_3.png"),
+            "team_invitation_world_diff_4": resource_path(r"images\template\team_invitation_world_diff_4.png"),
+            "team_invitation_world_diff_5": resource_path(r"images\template\team_invitation_world_diff_5.png"),
+            "team_invitation_world_diff_6": resource_path(r"images\template\team_invitation_world_diff_6.png"),
+            "team_invitation_world_diff_7": resource_path(r"images\template\team_invitation_world_diff_7.png"),
+            "team_invitation_world_diff_8": resource_path(r"images\template\team_invitation_world_diff_8.png"),
+            "team_invitation_world_diff_9": resource_path(r"images\template\team_invitation_world_diff_9.png"),
+            "team_invitation_world_diff_10": resource_path(r"images\template\team_invitation_world_diff_10.png"),
+            "team_invitation_world_diff_11": resource_path(r"images\template\team_invitation_world_diff_11.png"),
+            "team_invitation_world_diff_12": resource_path(r"images\template\team_invitation_world_diff_12.png"),
+            "team_invitation_world_diff_13": resource_path(r"images\template\team_invitation_world_diff_13.png"),
+            "team_invitation_world_diff_14": resource_path(r"images\template\team_invitation_world_diff_14.png"),
+            "team_invitation_world_diff_15": resource_path(r"images\template\team_invitation_world_diff_15.png"),
             # 其他模板路径...
         }
         self.template_paths = template_paths
@@ -174,6 +193,11 @@ class WorldAutomation:
             "skill_left": (95, 1184),
             "skill_right": (715, 1184),
             "mecha_skill": (711, 1028),
+
+            # 受邀请模式
+            "team_invitation_refuse": (582, 445),
+            "team_invitation_accept": (582, 377)
+
         }
 
         # ================= 标准画布 ROI =================
@@ -198,6 +222,9 @@ class WorldAutomation:
             "team_leave_text": (645, 1188, 698, 1222),
             "in_game_diff_text": (400, 103, 516, 148),
             "game_over_return_text": (348, 1292, 442, 1337),
+
+            # 受邀请模式
+            "roi_team_invitation_world_diff_text": (261, 455, 448, 486),
         }
 
         # 双线程,一个线程负责连点,一个线程负责截图判断是否停止点击
@@ -234,6 +261,10 @@ class WorldAutomation:
         self.SCAN_RETRY_GAP = 3  # 重试间隔（秒）
         self.VIEW_UNKNOWN = -1  # detect_view 识别失败时返回 -1
 
+        # 是否仅接受邀请
+        # True  = 仅接受邀请模式
+        # False = 主动抢环模式
+        self.invite_only = False
         # 战斗时点击
         self.fight_cnt = 0
         if self.HWND == 0:
@@ -309,6 +340,58 @@ class WorldAutomation:
         self.VIEW = v
         self._emit_view(v)
 
+    def debug_dump_roi(self, roi_name: str, scene_bgr=None, save_full_with_box: bool = True):
+        """
+        调试用：截取并保存某个 ROI 的实际图像，同时可选保存一张带 ROI 框的整图。
+        :param roi_name: self.ROI 里的键名
+        :param scene_bgr: 可传已有截图；不传则函数内部自动截图
+        :param save_full_with_box: 是否额外保存带红框的整图
+        :return: roi_img 或 None
+        """
+        if roi_name not in self.ROI:
+            self._log(f"[ROI_DEBUG] 未找到 ROI: {roi_name}")
+            return None
+
+        if scene_bgr is None:
+            scene_bgr = self.bkgnd_full_window_screenshot()
+
+        x1, y1, x2, y2 = self.ROI[roi_name]
+
+        h, w = scene_bgr.shape[:2]
+        x1 = max(0, min(x1, w))
+        x2 = max(0, min(x2, w))
+        y1 = max(0, min(y1, h))
+        y2 = max(0, min(y2, h))
+
+        if x2 <= x1 or y2 <= y1:
+            self._log(f"[ROI_DEBUG] ROI 非法: {roi_name} -> {(x1, y1, x2, y2)}")
+            return None
+
+        roi_img = scene_bgr[y1:y2, x1:x2].copy()
+
+        ts = time.strftime("%Y%m%d_%H%M%S")
+        roi_path = f"debug_{roi_name}_{ts}.png"
+        cv.imwrite(roi_path, roi_img)
+        self._log(f"[ROI_DEBUG] 已保存 ROI 图像: {roi_path}, size={roi_img.shape[1]}x{roi_img.shape[0]}")
+
+        if save_full_with_box:
+            full_img = scene_bgr.copy()
+            cv.rectangle(full_img, (x1, y1), (x2, y2), (0, 0, 255), 2)
+            cv.putText(
+                full_img,
+                roi_name,
+                (x1, max(30, y1 - 10)),
+                cv.FONT_HERSHEY_SIMPLEX,
+                0.8,
+                (0, 0, 255),
+                2
+            )
+            full_path = f"debug_full_{roi_name}_{ts}.png"
+            cv.imwrite(full_path, full_img)
+            self._log(f"[ROI_DEBUG] 已保存带框整图: {full_path}")
+
+        return roi_img
+    
     # 用于调试，保存截图
     def debug_dump_capture(self, scene_bgr: np.ndarray, name: str = "debug_capture"):
         h, w = scene_bgr.shape[:2]
@@ -422,7 +505,8 @@ class WorldAutomation:
         self.current_page_cb = current_page_cb  # 当前所处页面的回调
         self.world_counts_cb = world_counts_cb  # 环球救援 dict
 
-    def start(self, expect_diff: int = None, log_cb=None, counter_cb=None, current_page_cb=None, world_counts_cb=None):
+    def start(self, expect_diff: int = None, invite_only: bool = False,
+          log_cb=None, counter_cb=None, current_page_cb=None, world_counts_cb=None):
         """
         启动抢环球（非阻塞）：内部开线程跑 word_click()
         - expect_diff: 设定最低难度
@@ -442,6 +526,8 @@ class WorldAutomation:
             except Exception:
                 self._log(f"[WARN] expect_diff={expect_diff} 非法，保持原值 EXPECT_DIFF={self.EXPECT_DIFF}")
 
+        self.invite_only = bool(invite_only)
+
         # 开关置为运行
         self.run_event.set()
 
@@ -452,7 +538,8 @@ class WorldAutomation:
         # 计数是否要重置看你需求；这里先不动 test_cnt（你可以自己手动清零）
         # self.test_cnt = 0
 
-        self._log(f"[INFO] 启动抢环球：最低难度 EXPECT_DIFF={self.EXPECT_DIFF}")
+        mode_name = "仅接受邀请模式" if self.invite_only else "主动抢环模式"
+        self._log(f"[INFO] 启动抢环球：{mode_name} | 最低难度 EXPECT_DIFF={self.EXPECT_DIFF}")
 
         def _worker():
             try:
@@ -674,6 +761,32 @@ class WorldAutomation:
             if found and score > max_score:
                 max_score = score
                 ret = i + 1
+
+        return ret
+    
+    def get_world_diff_team_invitation(self, scene_bgr):
+        max_score = 0.0
+        ret = None
+
+        roi = self.ROI["roi_team_invitation_world_diff_text"]
+
+        # 环球一直接忽略
+        for i in range(1, 15):
+            template_name = f"team_invitation_world_diff_{i + 1}"
+
+            found, score, top_left, tpl_hw = self.template_matcher.match_template_in_roi(
+                scene_bgr,
+                template_name,
+                roi,
+                threshold=0.90
+            )
+            
+            # self._log(f"template_name: {template_name}, found: {found}, score: {score:.2f}")
+
+            if found and score >= max_score:
+                max_score = score
+                ret = i + 1
+                
 
         return ret
     def detect_ad_popup(self, scene_bgr):
@@ -908,6 +1021,17 @@ class WorldAutomation:
             "game_has_started": self.find_button(scene_bgr, "game_has_started"),
             "chart": self.find_button(scene_bgr, "chart"),
         }
+    
+    def collect_view0_features_invited(self, scene_bgr):
+        return {
+            "start_game": self.find_button(scene_bgr, "start_game", roi="roi_start_game"),
+            "fight": self.find_button(scene_bgr, "fight", roi="roi_fight"),
+            "copy_invitation": self.find_button(scene_bgr, "copy_invitation"),
+            "team_invitation": self.find_button(scene_bgr, "team_invitation"),
+            "game_has_started": self.find_button(scene_bgr, "game_has_started"),
+            "game_over_return": self.find_button(scene_bgr, "game_over_return"),
+            "chart": self.find_button(scene_bgr, "chart"),
+        }
 
     def collect_view1_features(self, scene_bgr):
         return {
@@ -920,6 +1044,20 @@ class WorldAutomation:
             "chart": self.find_button(scene_bgr, "chart"),
             "master_left": self.find_button(scene_bgr, "master_left", roi="roi_master_left"),
             "team_exit": self.find_button(scene_bgr, "team_exit", roi="roi_team_exit"),
+        }
+    
+    def collect_view1_features_invited(self, scene_bgr):
+        return {
+            "team_invitation_accept_btn": self.find_button(scene_bgr, "team_invitation_accept_btn"),
+        }
+    
+    def collect_view2_features_invited(self, scene_bgr):
+        return {
+            "master_left": self.find_button(scene_bgr, "master_left", roi="roi_master_left"),
+            "team_exit": self.find_button(scene_bgr, "team_exit", roi="roi_team_exit"),
+            "game_has_started": self.find_button(scene_bgr, "game_has_started"),
+            "game_over_return": self.find_button(scene_bgr, "game_over_return"),
+            "chart": self.find_button(scene_bgr, "chart"),
         }
     
     def collect_view2_features(self, scene_bgr):
@@ -1004,6 +1142,7 @@ class WorldAutomation:
 
         if self.is_home_page_by_feats(feats):
             self._log("[STATE]处于主页中,即将进入聊天框")
+            # 抢环模式
             pos = feats["main_chat"] or feats["main_chat_army"]
             if pos:
                 self.click_at(pos[0], pos[1])
@@ -1059,6 +1198,104 @@ class WorldAutomation:
             return
 
         self._log("[STATE]VIEW=0 下未识别出明确页面特征，保持当前状态")
+
+    def handle_view0_invited(self):
+        # 主页
+        scene_bgr = self.bkgnd_full_window_screenshot()
+        feats = self.collect_view0_features_invited(scene_bgr)
+
+        if self.handle_ad_popup(scene_bgr, sleep_after=1.0):
+            return
+        
+        # 检测到副本邀请
+        if feats["copy_invitation"]:
+            self._log("[STATE]检测到副本邀请，点击进入")
+            self.click_at_without_hover(feats["copy_invitation"][0], feats["copy_invitation"][1])
+            time.sleep(0.5)
+            # 确认是否进入邀请页面
+            scene_bgr = self.bkgnd_full_window_screenshot()
+            feats = self.collect_view0_features_invited(scene_bgr)
+            if feats["team_invitation"]:
+                self._log("[STATE]已进入组队邀请页面")
+                self.set_view(1)
+
+            return
+
+        if self.is_home_page_by_feats(feats):
+            # self._log("[STATE]处于主页中,等待接受邀请")
+            # time.sleep(0.5)
+            # self.set_view(0)
+            return
+        
+        if self.is_battle_page_by_feats(feats):
+            self._log("[STATE]当前实际已在战斗中")
+            self.set_view(4)
+            return
+        
+        time.sleep(0.1)
+
+    def handle_view1_invited(self):
+        # 组队邀请页面
+        # 先识别难度，再考虑接受邀请
+        scene_bgr = self.bkgnd_full_window_screenshot()
+        # 先看到有邀请框了再判断
+        feats = self.collect_view1_features_invited(scene_bgr)
+        if feats["team_invitation_accept_btn"]:
+            diff = self.get_world_diff_team_invitation(scene_bgr)
+            # self.debug_dump_roi("roi_team_invitation_world_diff_text", scene_bgr)
+            # self._log(f"[TEST]难度: {diff}")
+            if diff is None :
+                self._log(f"无法识别难度，尝试拒绝")
+                self.click_at_without_hover(*self.PT["team_invitation_refuse"])
+                time.sleep(1.0)
+                return
+            elif diff >= int(self.EXPECT_DIFF):
+                self._log(f"[STATE]难度为{diff}, 符合预期，接受邀请")
+                self.click_at_without_hover(*self.PT["team_invitation_accept"])
+                time.sleep(0.5)
+                self.set_view(2)
+                return
+            elif diff < int(self.EXPECT_DIFF):
+                self._log(f"[STATE]难度为{diff}，低于预期，拒绝邀请")
+                self.click_at_without_hover(*self.PT["team_invitation_refuse"])
+                time.sleep(0.5)
+                return
+        
+        time.sleep(0.1)
+    
+    def handle_view2_invited(self):
+        # 进入组队页面
+        scene_bgr = self.bkgnd_full_window_screenshot()
+        feats = self.collect_view2_features_invited(scene_bgr)
+        if self.is_team_page_by_feats(feats):
+            self._log("[STATE]已进入组队界面, 等待房主开启游戏")
+
+        if self.is_battle_page_by_feats(feats):
+            self._log("[STATE]房主已开启游戏，祝你胜利")
+            # self._game_begin(self.diff)
+            self.set_view(4)
+            return
+
+        if feats["master_left"]:
+            self._log("[STATE]队长不想打，自己退了,即将退出队伍到主页面")
+            self._log("[STATE]当队里只有一人时,退出只有一步,直接点击左下角退出键")
+
+            leave1_x, leave1_y = self.PT["leave_step1"]
+            self.click_at_without_hover(leave1_x, leave1_y)
+            time.sleep(2)
+
+            # 有时会退出到了主界面但游戏还是开始了，再检查一次
+            scene_bgr = self.bkgnd_full_window_screenshot()
+            feats = self.collect_view3_features(scene_bgr)
+
+            if self.is_home_page_by_feats(feats):
+                self._log("[STATE]成功退回到主页面")
+                self.diff = None
+                self.set_view(0)
+                return
+            
+        time.sleep(0.5)
+            
     def handle_view1(self):
         # 跨服聊天
         scene_bgr = self.bkgnd_full_window_screenshot()
@@ -1362,15 +1599,24 @@ class WorldAutomation:
                     next_scan_ts = now + self.SCAN_INTERVAL
                 # 每个页面下的处理逻辑
                 if self.VIEW == 0:
-                    self.handle_view0()
+                    if self.invite_only:
+                        self.handle_view0_invited()
+                    else:
+                        self.handle_view0()
                     if not self.run_event.is_set():
                         break
                 elif self.VIEW == 1:
-                    self.handle_view1()
+                    if self.invite_only:
+                        self.handle_view1_invited()
+                    else:
+                        self.handle_view1()
                     if not self.run_event.is_set():
                         break
                 elif self.VIEW == 2:
-                    self.handle_view2()
+                    if self.invite_only:
+                        self.handle_view2_invited()
+                    else:
+                        self.handle_view2()
                     if not self.run_event.is_set():
                         break
                 elif self.VIEW == 3:
