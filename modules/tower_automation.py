@@ -30,6 +30,7 @@ class TowerAutomation:
             "tower_game_over_return": resource_path(r"images\template\tower_game_over_return.png"),
             "next_level": resource_path(r"images\template\next_level.png"),
             "tower_reach_limited": resource_path(r"images\template\tower_reach_limited.png"),
+            "main_tower": resource_path(r"images\template\main_tower.png"),
         }
         self.template_paths = template_paths
         self.template_matcher = TemplateMatcher(template_paths)
@@ -53,6 +54,11 @@ class TowerAutomation:
             "hall_challenge": (519, 1264),
             "enter_main_tower": (411, 511),
             "auto_select": (318, 1124),
+            "back_home_step_1": (673, 341),
+            "back_home_step_2": (111, 1412),
+            "back_home_step_3": (111, 1412),
+            "back_home_step_4": (111, 1412),
+            "back_home_step_5": (398, 1404),
         }
 
         self.ROI = {
@@ -63,6 +69,7 @@ class TowerAutomation:
             "roi_tower_game_over_return": (259, 1278, 513, 1349),
             "roi_next_level": (400, 100, 647, 1300),
             "roi_tower_reach_limited": (234, 745, 560, 830),
+            "roi_main_tower": (255, 207, 538, 313),
         }
 
         self.VIEW = 0
@@ -285,7 +292,12 @@ class TowerAutomation:
 
         lparam_up = win32api.MAKELONG(x_m, y_end_m)
         win32api.PostMessage(self.HWND, win32con.WM_LBUTTONUP, 0, lparam_up)
-        
+    
+    def collect_view0_features(self, scene_bgr):
+        return {
+            "main_tower": self.find_button(scene_bgr, "main_tower", roi="roi_main_tower"),
+            }
+    
     def handle_view0(self):
         self._log("[STATE] 初始塔页，进入主塔")
         self.click_at_without_hover(*self.PT["base"])
@@ -296,9 +308,15 @@ class TowerAutomation:
         time.sleep(1.0)
         self.click_at_without_hover(*self.PT["hall_challenge"])
         time.sleep(1.0)
-        self.click_at_without_hover(*self.PT["enter_main_tower"])
-        time.sleep(1.0)
-        self.set_view(1)
+        while True:
+            scene_bgr = self.bkgnd_full_window_screenshot()
+            feats = self.collect_view0_features(scene_bgr)
+            if feats["main_tower"]:
+                self._log("[STATE] 检测主塔，准备点击")
+                self.click_at_without_hover(*self.PT["enter_main_tower"])
+                time.sleep(1)
+                self.set_view(1)
+                return
 
     def collect_view1_features(self, scene_bgr):
         return {
@@ -336,6 +354,16 @@ class TowerAutomation:
 
             if feats["tower_reach_limited"]:
                 self._log("[STATE] 已达到升层上限，程序即将暂停")
+                self.click_at_without_hover(*self.PT["back_home_step_1"])
+                time.sleep(1.0)
+                self.click_at_without_hover(*self.PT["back_home_step_2"])
+                time.sleep(1.0)
+                self.click_at_without_hover(*self.PT["back_home_step_3"])
+                time.sleep(1.0)
+                self.click_at_without_hover(*self.PT["back_home_step_4"])
+                time.sleep(1.0)
+                self.click_at_without_hover(*self.PT["back_home_step_5"])
+                time.sleep(1.0)
                 self.stop()
                 return
             

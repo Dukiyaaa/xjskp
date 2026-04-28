@@ -273,6 +273,86 @@ class AdWatcher:
         self._log("广告等待超时")
         return False
 
+    def ensure_back_to_home(self, timeout: float = 15.0) -> bool:
+        """
+        无论广告任务因何结束，都尽量回到主页面。
+        返回:
+            True  -> 已确认回到主页
+            False -> 超时/未能确认
+        """
+        self._log("开始执行收尾：尝试回到主页面")
+        t0 = time.time()
+
+        while time.time() - t0 < timeout:
+            scene = self.snap()
+
+            # 先尝试处理一些已知遮挡弹窗
+            try:
+                if self.world_automation.handle_ad_popup(scene, sleep_after=0.8):
+                    continue
+                if self.world_automation.handle_upgrade_popup(scene, sleep_after=0.8):
+                    continue
+                if self.world_automation.handle_reconnect_popup(scene, sleep_after=0.8):
+                    continue
+            except Exception as e:
+                self._log(f"处理遮挡弹窗时异常: {e}")
+
+            # 优先处理广告页自己的关闭控件
+            ad_cancel_xy = self.find(scene, "ad_cancel", thr=self.THR_ENTRY)
+            if ad_cancel_xy:
+                self._log("命中 ad_cancel，尝试退出当前页面")
+                self.click_xy(ad_cancel_xy, delay=1.0)
+                continue
+
+            ad_close_xy = self.find(scene, "ad_close", thr=self.THR_CLOSE)
+            if ad_close_xy:
+                self._log("命中 ad_close，尝试关闭当前页面")
+                self.click_xy(ad_close_xy, delay=1.0)
+                continue
+
+            # 用 WorldAutomation 现成的判页逻辑
+            feats = self.world_automation.collect_scan_features(scene)
+
+            if self.world_automation.is_home_page_by_feats(feats):
+                self._log("已成功回到主页面")
+                return True
+
+            elif self.world_automation.is_resource_page_by_feats(feats):
+                self._log("当前在资源页，点击返回")
+                self.world_automation.click_at(*self.world_automation.PT["resource_back"])
+                time.sleep(1.0)
+                continue
+
+            elif self.world_automation.is_team_page_by_feats(feats):
+                self._log("当前在组队页，尝试退回主页")
+                self.world_automation.click_at_without_hover(*self.world_automation.PT["leave_step1"])
+                time.sleep(0.5)
+                self.world_automation.click_at_without_hover(*self.world_automation.PT["leave_step2"])
+                time.sleep(1.5)
+                continue
+
+            elif self.world_automation.is_battle_page_by_feats(feats):
+                self._log("当前仍处于战斗/结算相关页面，等待后重试")
+                time.sleep(1.0)
+                continue
+
+            elif self.world_automation.is_chat_page_by_feats(feats):
+                self._log("当前在聊天页，等待/重试回主页")
+                time.sleep(1.0)
+                continue
+
+            elif self.world_automation.is_recruit_page_by_feats(feats):
+                self._log("当前在招募页，等待/重试回主页")
+                time.sleep(1.0)
+                continue
+
+            else:
+                self._log("未识别当前页面，等待后重试")
+                time.sleep(1.0)
+
+        self._log("收尾失败：未能在限定时间内回到主页面")
+        return False
+
     # 体力看广告
     def ad_power(self, max_rounds: int = 5, cooldown: int = 300):
         """
@@ -280,7 +360,8 @@ class AdWatcher:
         循环看广告的完整流程：主页-找power-进去找power_free-看广告，等退出-退出后先退回到主页-过一段时间(6分钟)重复之前的步骤，直到显示power_free已用光，最多重复5次
         """
         self._log("开始自动看体力广告")
-
+        ok = False
+        reason = "unknown"
         rounds = 0
         try:
             while self.power_running and rounds < max_rounds:
@@ -355,11 +436,20 @@ class AdWatcher:
                     self._log("冷却期收到停止信号，退出")
                     return True
             if rounds >= max_rounds:
+                ok = True
+                reason = "max_rounds_reached"
                 self._log("[WARN] 达到最大轮数保护，停止")
             return True
 
+    # 等待广告结束      
+
         finally:
-            # 统一收尾：确保 GUI 状态正确
+            try:
+                back_ok = self.ensure_back_to_home(timeout=15.0)
+                self._log(f"收尾回主页结果: {back_ok}")
+            except Exception as e:
+                self._log(f"收尾回主页异常: {e}")
+
             self.power_running = False
             self._log("自动体力广告已停止")
             self._emit_power_done(ok, reason)

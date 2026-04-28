@@ -72,7 +72,7 @@ class AppGUI:
 
         # If import failed, show warning (but keep GUI running)
         if WorldAutomation is None:
-            self._push_log("ERROR", f"无法导入 WorldAutomation：\n{_import_err}\n"
+            self._push_log("ERROR", f"无法导入 WorldAutomation：\n{_world_import_err}\n"
                                     f"请确认：\n"
                                     f"1) modules/world_automation.py 存在并包含 WorldAutomation\n"
                                     f"或\n"
@@ -124,6 +124,7 @@ class AppGUI:
         self._build_world_tab(self.tab_world)
         self._build_tower_tab(self.tab_tower)
         self._build_ads_tab(self.tab_ads)
+        self._build_queue_tab(self.tab_queue)
         self._build_about_tab(self.tab_about)
 
     def _build_world_tab(self, parent: ttk.Frame):
@@ -403,6 +404,431 @@ class AppGUI:
         ttk.Button(ads_bottom, text="清空广告日志", command=self.on_clear_ads_log).pack(side="left")
         ttk.Button(ads_bottom, text="复制广告日志", command=self.on_copy_ads_log).pack(side="left", padx=8)
 
+    def _build_queue_tab(self, parent: ttk.Frame):
+        left = ttk.Frame(parent)
+        left.pack(side="left", fill="y", padx=(0, 12))
+
+        middle = ttk.Frame(parent)
+        middle.pack(side="left", fill="both", expand=False, padx=(0, 12))
+
+        right = ttk.Frame(parent)
+        right.pack(side="right", fill="both", expand=True)
+
+        # ---- 左侧：添加任务 ----
+        grp_add = ttk.LabelFrame(left, text="添加任务", padding=10)
+        grp_add.pack(fill="x")
+
+        ttk.Label(grp_add, text="任务类型").grid(row=0, column=0, sticky="w", pady=(0, 6))
+        self.var_queue_task_type = tk.StringVar(value="抢环球")
+        cmb_task = ttk.Combobox(
+            grp_add,
+            textvariable=self.var_queue_task_type,
+            values=["抢环球", "爬塔", "体力广告"],
+            state="readonly",
+            width=18
+        )
+        cmb_task.grid(row=0, column=1, sticky="w", pady=(0, 6))
+
+        ttk.Label(grp_add, text="最低难度").grid(row=1, column=0, sticky="w", pady=(0, 6))
+        self.var_queue_expect_diff = tk.StringVar(value="7")
+        ttk.Entry(grp_add, textvariable=self.var_queue_expect_diff, width=20).grid(
+            row=1, column=1, sticky="w", pady=(0, 6)
+        )
+
+        self.var_queue_invite_only = tk.BooleanVar(value=False)
+        ttk.Checkbutton(
+            grp_add,
+            text="仅接受邀请",
+            variable=self.var_queue_invite_only
+        ).grid(row=2, column=0, columnspan=2, sticky="w", pady=(0, 6))
+
+        ttk.Button(grp_add, text="加入队列", command=self.on_queue_add).grid(
+            row=3, column=0, columnspan=2, sticky="we", pady=(8, 0)
+        )
+
+        # ---- 中间：队列列表 ----
+        grp_list = ttk.LabelFrame(middle, text="任务列表", padding=10)
+        grp_list.pack(fill="both", expand=True)
+
+        self.lst_queue = tk.Listbox(grp_list, height=18, width=40)
+        self.lst_queue.pack(fill="both", expand=True)
+
+        btns = ttk.Frame(grp_list)
+        btns.pack(fill="x", pady=(10, 0))
+
+        ttk.Button(btns, text="上移", command=self.on_queue_move_up).pack(side="left")
+        ttk.Button(btns, text="下移", command=self.on_queue_move_down).pack(side="left", padx=6)
+        ttk.Button(btns, text="删除", command=self.on_queue_delete).pack(side="left", padx=6)
+        ttk.Button(btns, text="清空", command=self.on_queue_clear).pack(side="left", padx=6)
+
+        # ---- 右侧：运行控制 + 日志 ----
+        grp_ctrl = ttk.LabelFrame(right, text="队列控制", padding=10)
+        grp_ctrl.pack(fill="x")
+
+        self.var_queue_status = tk.StringVar(value="未运行")
+        ttk.Label(grp_ctrl, text="状态：").grid(row=0, column=0, sticky="w")
+        ttk.Label(grp_ctrl, textvariable=self.var_queue_status).grid(row=0, column=1, sticky="w")
+
+        ctrl_btns = ttk.Frame(grp_ctrl)
+        ctrl_btns.grid(row=1, column=0, columnspan=2, sticky="we", pady=(10, 0))
+
+        self.btn_queue_start = ttk.Button(ctrl_btns, text="启动队列", command=self.on_queue_start)
+        self.btn_queue_start.pack(side="left")
+
+        self.btn_queue_stop = ttk.Button(ctrl_btns, text="停止队列", command=self.on_queue_stop, state="disabled")
+        self.btn_queue_stop.pack(side="left", padx=8)
+
+        log_grp = ttk.LabelFrame(right, text="队列日志", padding=10)
+        log_grp.pack(fill="both", expand=True, pady=(12, 0))
+
+        self.txt_queue_log = tk.Text(log_grp, wrap="word", height=18)
+        self.txt_queue_log.pack(side="left", fill="both", expand=True)
+
+        sb = ttk.Scrollbar(log_grp, orient="vertical", command=self.txt_queue_log.yview)
+        sb.pack(side="right", fill="y")
+        self.txt_queue_log.configure(yscrollcommand=sb.set)
+
+    def on_queue_add(self):
+        task_type = self.var_queue_task_type.get()
+
+        if task_type == "抢环球":
+            try:
+                expect_diff = int(self.var_queue_expect_diff.get().strip())
+            except Exception:
+                messagebox.showwarning("提示", "最低难度必须是整数。")
+                return
+
+            task = {
+                "task_type": "world",
+                "name": f"抢环球(难度≥{expect_diff}, {'仅邀请' if self.var_queue_invite_only.get() else '主动'})",
+                "params": {
+                    "expect_diff": expect_diff,
+                    "invite_only": self.var_queue_invite_only.get()
+                }
+            }
+
+        elif task_type == "爬塔":
+            task = {
+                "task_type": "tower",
+                "name": "爬塔",
+                "params": {}
+            }
+
+        elif task_type == "体力广告":
+            try:
+                max_rounds = int(self.var_ads_power_rounds.get().strip())
+                cooldown = int(self.var_ads_power_cooldown.get().strip())
+            except Exception:
+                messagebox.showwarning("提示", "广告轮数和冷却时间必须是整数。")
+                return
+
+            task = {
+                "task_type": "ads_power",
+                "name": f"体力广告(轮数={max_rounds}, 冷却={cooldown}s)",
+                "params": {
+                    "max_rounds": max_rounds,
+                    "cooldown": cooldown
+                }
+            }
+
+        else:
+            messagebox.showwarning("提示", f"未知任务类型：{task_type}")
+            return
+
+        self.task_queue.append(task)
+        self.lst_queue.insert("end", task["name"])
+        self._append_queue_log(f"[QUEUE] 已添加任务：{task['name']}")
+
+    def on_queue_move_up(self):
+        sel = self.lst_queue.curselection()
+        if not sel:
+            return
+        i = sel[0]
+        if i == 0:
+            return
+
+        self.task_queue[i - 1], self.task_queue[i] = self.task_queue[i], self.task_queue[i - 1]
+
+        self._refresh_queue_listbox()
+        self.lst_queue.selection_set(i - 1)
+
+    def on_queue_move_down(self):
+        sel = self.lst_queue.curselection()
+        if not sel:
+            return
+        i = sel[0]
+        if i >= len(self.task_queue) - 1:
+            return
+
+        self.task_queue[i + 1], self.task_queue[i] = self.task_queue[i], self.task_queue[i + 1]
+
+        self._refresh_queue_listbox()
+        self.lst_queue.selection_set(i + 1)
+
+    def on_queue_delete(self):
+        sel = self.lst_queue.curselection()
+        if not sel:
+            return
+        i = sel[0]
+        task = self.task_queue.pop(i)
+        self._refresh_queue_listbox()
+        self._append_queue_log(f"[QUEUE] 已删除任务：{task['name']}")
+
+    def on_queue_clear(self):
+        self.task_queue.clear()
+        self._refresh_queue_listbox()
+        self._append_queue_log("[QUEUE] 已清空任务列表")
+
+    def _refresh_queue_listbox(self):
+        self.lst_queue.delete(0, "end")
+        for task in self.task_queue:
+            self.lst_queue.insert("end", task["name"])
+
+    def _append_queue_log(self, msg: str):
+        if self.txt_queue_log is None:
+            return
+        ts = time.strftime("%H:%M:%S")
+        self.txt_queue_log.insert("end", f"{ts} {msg}\n")
+        self.txt_queue_log.see("end")
+    
+    def on_queue_start(self):
+        if self.queue_running:
+            self._append_queue_log("[QUEUE] 队列已在运行中")
+            return
+
+        if not self.task_queue:
+            messagebox.showwarning("提示", "任务队列为空，请先添加任务。")
+            return
+
+        self.queue_running = True
+        self.queue_current_index = -1
+        self.var_queue_status.set("运行中")
+        self.btn_queue_start.configure(state="disabled")
+        self.btn_queue_stop.configure(state="normal")
+
+        self.btn_start.configure(state="disabled")
+        self.btn_tower_start.configure(state="disabled")
+        self.btn_ads_power_start.configure(state="disabled")
+
+        self._append_queue_log("[QUEUE] 开始执行任务队列")
+        self._queue_start_next_task()
+
+    def on_queue_stop(self):
+        if not self.queue_running:
+            return
+
+        self.queue_running = False
+
+        try:
+            if self.automation is not None and self.automation.run_event.is_set():
+                self.automation.stop()
+        except Exception as e:
+            self._append_queue_log(f"[QUEUE] 停止 WorldAutomation 时异常: {e}")
+
+        try:
+            if self.tower_automation is not None and self.tower_automation.run_event.is_set():
+                self.tower_automation.stop()
+        except Exception as e:
+            self._append_queue_log(f"[QUEUE] 停止 TowerAutomation 时异常: {e}")
+
+        try:
+            if self.ad_watcher is not None and self.ad_watcher.power_running:
+                self.ad_watcher.stop_power_ads()
+        except Exception as e:
+            self._append_queue_log(f"[QUEUE] 停止 AdWatcher 时异常: {e}")
+
+        if self.queue_after_id is not None:
+            try:
+                self.root.after_cancel(self.queue_after_id)
+            except Exception:
+                pass
+            self.queue_after_id = None
+
+        self.var_queue_status.set("已停止")
+        self.btn_queue_start.configure(state="normal")
+        self.btn_queue_stop.configure(state="disabled")
+
+        self.btn_start.configure(state="normal")
+        self.btn_tower_start.configure(state="normal")
+        self.btn_ads_power_start.configure(state="normal")
+
+        self._append_queue_log("[QUEUE] 已手动停止任务队列")
+
+    def _queue_start_next_task(self):
+        if not self.queue_running:
+            return
+
+        self.queue_current_index += 1
+
+        if self.queue_current_index >= len(self.task_queue):
+            self._queue_finish("[QUEUE] 所有任务执行完成")
+            return
+
+        task = self.task_queue[self.queue_current_index]
+        task_type = task["task_type"]
+        task_name = task["name"]
+
+        self._append_queue_log(f"[QUEUE] 开始执行第 {self.queue_current_index + 1} 个任务: {task_name}")
+
+        try:
+            if task_type == "world":
+                params = task.get("params", {})
+                expect_diff = params.get("expect_diff", 7)
+                invite_only = params.get("invite_only", False)
+
+                window_name = self.var_window_name.get().strip()
+                click_interval = float(self.var_click_interval.get().strip())
+
+                if self.automation is None:
+                    self.automation = WorldAutomation(
+                        window_name=window_name,
+                        auto_resize_window=self._consume_resize_once_flag()
+                    )
+                    self.automation.set_callbacks(
+                        log_cb=self.log_cb,
+                        current_page_cb=self.current_page_cb,
+                        counter_cb=self.counter_cb,
+                        world_counts_cb=self.world_counts_cb
+                    )
+                    self.btn_ads_power_start.configure(state="normal")
+                    self._push_log("INFO", f"[GUI] 已初始化 WorldAutomation(window_name='{window_name}')")
+
+                self.automation.mid_entry_click_enabled = self.var_mid_entry_click.get()
+                self.automation._min_click_interval = click_interval
+                self.automation.start(
+                    expect_diff=expect_diff,
+                    invite_only=invite_only,
+                    log_cb=self.log_cb,
+                    current_page_cb=self.current_page_cb,
+                    counter_cb=self.counter_cb,
+                    world_counts_cb=self.world_counts_cb
+                )
+
+                self.var_running.set("运行中")
+                self.btn_start.configure(state="disabled")
+                self.btn_stop.configure(state="normal")
+                self.btn_reset.configure(state="normal")
+                self.btn_reset_world_counts.configure(state="normal")
+
+            elif task_type == "tower":
+                window_name = self.var_tower_window_name.get().strip()
+
+                if self.tower_automation is None:
+                    self.tower_automation = TowerAutomation(
+                        window_name=window_name,
+                        auto_resize_window=self._consume_resize_once_flag()
+                    )
+                    self.tower_automation.set_callbacks(
+                        log_cb=self.log_cb,
+                        current_page_cb=self.current_page_cb
+                    )
+                    self._push_log("INFO", f"[GUI] 已初始化 TowerAutomation(window_name='{window_name}')")
+
+                self.tower_automation.start(
+                    log_cb=self.log_cb,
+                    current_page_cb=self.current_page_cb
+                )
+
+                self.var_tower_running.set("运行中")
+                self.btn_tower_start.configure(state="disabled")
+                self.btn_tower_stop.configure(state="normal")
+            elif task_type == "ads_power":
+                params = task.get("params", {})
+                max_rounds = params.get("max_rounds", 30)
+                cooldown = params.get("cooldown", 300)
+
+                if not self._ensure_ad_watcher():
+                    self._append_queue_log("[QUEUE] AdWatcher 初始化失败，跳过该任务")
+                    self._queue_start_next_task()
+                    return
+
+                self.ad_watcher.start_power_ads(max_rounds=max_rounds, cooldown=cooldown)
+
+                self.btn_ads_power_start.configure(state="disabled")
+                self.btn_ads_power_stop.configure(state="normal")
+                self._append_queue_log(f"[QUEUE] 已启动体力广告任务: max_rounds={max_rounds}, cooldown={cooldown}s")
+
+            else:
+                self._append_queue_log(f"[QUEUE] 未知任务类型: {task_type}")
+                self._queue_start_next_task()
+                return
+
+            if task_type in ("world", "tower"):
+                self.queue_after_id = self.root.after(500, self._queue_check_current_task)
+
+        except Exception as e:
+            tb = traceback.format_exc()
+            self._append_queue_log(f"[QUEUE] 启动任务失败: {task_name} | {e}")
+            self._push_log("ERROR", f"[QUEUE] 启动任务失败：{e}\n{tb}")
+            self._queue_start_next_task()
+
+    def _queue_check_current_task(self):
+        if not self.queue_running:
+            return
+
+        if self.queue_current_index < 0 or self.queue_current_index >= len(self.task_queue):
+            self._queue_finish("[QUEUE] 当前任务索引异常，队列结束")
+            return
+
+        task = self.task_queue[self.queue_current_index]
+        task_type = task["task_type"]
+
+        alive = False
+
+        try:
+            if task_type == "world":
+                alive = (
+                    self.automation is not None and
+                    self.automation.worker_thread is not None and
+                    self.automation.worker_thread.is_alive()
+                )
+                if not alive:
+                    self.var_running.set("未运行")
+                    self.btn_start.configure(state="normal")
+                    self.btn_stop.configure(state="disabled")
+
+            elif task_type == "tower":
+                alive = (
+                    self.tower_automation is not None and
+                    self.tower_automation.worker_thread is not None and
+                    self.tower_automation.worker_thread.is_alive()
+                )
+                if not alive:
+                    self.var_tower_running.set("未运行")
+                    self.btn_tower_start.configure(state="normal")
+                    self.btn_tower_stop.configure(state="disabled")
+
+        except Exception as e:
+            self._append_queue_log(f"[QUEUE] 检查任务状态异常: {e}")
+            alive = False
+
+        if alive:
+            self.queue_after_id = self.root.after(500, self._queue_check_current_task)
+        else:
+            self._append_queue_log(f"[QUEUE] 第 {self.queue_current_index + 1} 个任务已结束，准备下一个")
+            self._queue_start_next_task()
+
+    def _queue_finish(self, msg: str):
+        self.queue_running = False
+        self.queue_current_index = -1
+
+        if self.queue_after_id is not None:
+            try:
+                self.root.after_cancel(self.queue_after_id)
+            except Exception:
+                pass
+            self.queue_after_id = None
+
+        self.var_queue_status.set("未运行")
+        self.btn_queue_start.configure(state="normal")
+        self.btn_queue_stop.configure(state="disabled")
+
+        self.btn_start.configure(state="normal")
+        self.btn_tower_start.configure(state="normal")
+        self.btn_ads_power_start.configure(state="normal")
+
+        self._append_queue_log(msg)
+
     def _build_about_tab(self, parent: ttk.Frame):
         ttk.Label(parent, text="这里预留做全局设置/模块管理器/调试工具。", style="Hint.TLabel").pack(anchor="w")
         ttk.Label(
@@ -468,10 +894,18 @@ class AppGUI:
                 elif kind == "AD_POWER_DONE":
                     ok = payload["ok"]
                     reason = payload["reason"]
+
                     self.btn_ads_power_start.configure(state="normal")
                     self.btn_ads_power_stop.configure(state="disabled")
-                    self._push_log("INFO" if ok else "WARN",
-                                   f"[GUI][AD] 体力广告结束 ok={ok} reason={reason}")
+
+                    self._push_log(
+                        "INFO" if ok else "WARN",
+                        f"[GUI][AD] 体力广告结束 ok={ok} reason={reason}"
+                    )
+
+                    if self.queue_running:
+                        self._append_queue_log(f"[QUEUE] 广告任务结束 ok={ok} reason={reason}，准备下一个任务")
+                        self._queue_start_next_task()
                 else:
                     self._append_log(kind, payload)
         except queue.Empty:
@@ -640,6 +1074,11 @@ class AppGUI:
             self._push_log("ERROR", f"[GUI] 复制广告日志失败：{e}")
 
     def on_close(self):
+        try:
+            self.on_queue_stop()
+        except Exception:
+            pass
+
         try:
             if self.automation is not None:
                 self.automation.stop()

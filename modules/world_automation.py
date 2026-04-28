@@ -138,6 +138,11 @@ class WorldAutomation:
             "team_invitation_world_diff_13": resource_path(r"images\template\team_invitation_world_diff_13.png"),
             "team_invitation_world_diff_14": resource_path(r"images\template\team_invitation_world_diff_14.png"),
             "team_invitation_world_diff_15": resource_path(r"images\template\team_invitation_world_diff_15.png"),
+            "team_invitation_world_diff_16": resource_path(r"images\template\team_invitation_world_diff_16.png"),
+            "team_invitation_world_diff_17": resource_path(r"images\template\team_invitation_world_diff_17.png"),
+            "team_invitation_world_diff_18": resource_path(r"images\template\team_invitation_world_diff_18.png"),
+            "team_invitation_world_diff_19": resource_path(r"images\template\team_invitation_world_diff_19.png"),
+            "team_invitation_world_diff_20": resource_path(r"images\template\team_invitation_world_diff_20.png"),
             # 其他模板路径...
         }
         self.template_paths = template_paths
@@ -771,7 +776,7 @@ class WorldAutomation:
         roi = self.ROI["roi_team_invitation_world_diff_text"]
 
         # 环球一直接忽略
-        for i in range(1, 15):
+        for i in range(1, 20):
             template_name = f"team_invitation_world_diff_{i + 1}"
 
             found, score, top_left, tpl_hw = self.template_matcher.match_template_in_roi(
