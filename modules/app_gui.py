@@ -31,6 +31,13 @@ except Exception:
     TowerAutomation = None
     _tower_import_err = traceback.format_exc()
 
+try:
+    from expedition_automation import *
+    _expedition_import_err = None
+except Exception:
+    ExpeditionAutomation = None
+    _expedition_import_err = traceback.format_exc()
+
 class AppGUI:
     def __init__(self, root: tk.Tk):
         self.root = root
@@ -48,6 +55,8 @@ class AppGUI:
 
         self.tower_automation = None
         self.txt_tower_log = None
+        self.expedition_automation = None
+        self.txt_expedition_log = None
 
         # 任务队列模块
         self.task_queue = []              # 队列数据
@@ -110,6 +119,9 @@ class AppGUI:
         self.tab_tower = ttk.Frame(self.nb, padding=12)
         self.nb.add(self.tab_tower, text="自动爬塔")
 
+        self.tab_expedition = ttk.Frame(self.nb, padding=12)
+        self.nb.add(self.tab_expedition, text="自动远征")
+
         # 新增：看广告
         self.tab_ads = ttk.Frame(self.nb, padding=12)
         self.nb.add(self.tab_ads, text="自动看广告")
@@ -123,6 +135,7 @@ class AppGUI:
 
         self._build_world_tab(self.tab_world)
         self._build_tower_tab(self.tab_tower)
+        self._build_expedition_tab(self.tab_expedition)
         self._build_ads_tab(self.tab_ads)
         self._build_queue_tab(self.tab_queue)
         self._build_about_tab(self.tab_about)
@@ -339,7 +352,85 @@ class AppGUI:
         bottom.pack(fill="x", pady=(10, 0))
         ttk.Button(bottom, text="清空日志", command=self.on_clear_tower_log).pack(side="left")
         ttk.Button(bottom, text="复制日志", command=self.on_copy_tower_log).pack(side="left", padx=8)
-        
+    
+    def _build_expedition_tab(self, parent: ttk.Frame):
+        left = ttk.Frame(parent)
+        left.pack(side="left", fill="y", padx=(0, 12))
+
+        right = ttk.Frame(parent)
+        right.pack(side="right", fill="both", expand=True)
+
+        grp = ttk.LabelFrame(left, text="远征控制", padding=10)
+        grp.pack(fill="x")
+
+        ttk.Label(grp, text="窗口名（FindWindow）").grid(row=0, column=0, sticky="w", pady=(0, 6))
+        self.var_expedition_window_name = tk.StringVar(value="向僵尸开炮")
+        ttk.Entry(grp, textvariable=self.var_expedition_window_name, width=22).grid(
+            row=0, column=1, sticky="w", pady=(0, 6)
+        )
+
+        ttk.Label(grp, text="远征身份").grid(row=1, column=0, sticky="w", pady=(0, 6))
+        self.var_expedition_role = tk.StringVar(value="出票位")
+        cmb_role = ttk.Combobox(
+            grp,
+            textvariable=self.var_expedition_role,
+            values=["出票位", "打手位"],
+            state="readonly",
+            width=19
+        )
+        cmb_role.grid(row=1, column=1, sticky="w", pady=(0, 6))
+
+        btn_row = ttk.Frame(grp)
+        btn_row.grid(row=2, column=0, columnspan=2, sticky="we", pady=(6, 0))
+        btn_row.columnconfigure(0, weight=1)
+        btn_row.columnconfigure(1, weight=1)
+
+        self.btn_expedition_start = ttk.Button(
+            btn_row,
+            text="启动",
+            command=self.on_expedition_start
+        )
+        self.btn_expedition_start.grid(row=0, column=0, sticky="we", padx=(0, 6))
+
+        self.btn_expedition_stop = ttk.Button(
+            btn_row,
+            text="停止",
+            command=self.on_expedition_stop,
+            state="disabled"
+        )
+        self.btn_expedition_stop.grid(row=0, column=1, sticky="we")
+
+        grp2 = ttk.LabelFrame(left, text="状态", padding=10)
+        grp2.pack(fill="x", pady=(12, 0))
+
+        self.var_expedition_running = tk.StringVar(value="未运行")
+        ttk.Label(grp2, text="运行状态：").grid(row=0, column=0, sticky="w")
+        ttk.Label(grp2, textvariable=self.var_expedition_running).grid(row=0, column=1, sticky="w")
+
+        self.var_expedition_role_show = tk.StringVar(value="出票位")
+        ttk.Label(grp2, text="当前身份：").grid(row=1, column=0, sticky="w", pady=(8, 0))
+        ttk.Label(grp2, textvariable=self.var_expedition_role_show).grid(row=1, column=1, sticky="w", pady=(8, 0))
+
+        log_grp = ttk.LabelFrame(right, text="远征日志输出", padding=10)
+        log_grp.pack(fill="both", expand=True)
+
+        self.txt_expedition_log = tk.Text(log_grp, wrap="word", height=24)
+        self.txt_expedition_log.pack(side="left", fill="both", expand=True)
+
+        sb = ttk.Scrollbar(log_grp, orient="vertical", command=self.txt_expedition_log.yview)
+        sb.pack(side="right", fill="y")
+        self.txt_expedition_log.configure(yscrollcommand=sb.set)
+
+        self.txt_expedition_log.tag_configure("INFO", foreground="#1f6feb")
+        self.txt_expedition_log.tag_configure("WARN", foreground="#b58900")
+        self.txt_expedition_log.tag_configure("ERROR", foreground="#d73a49")
+        self.txt_expedition_log.tag_configure("DEBUG", foreground="#6a737d")
+
+        bottom = ttk.Frame(right)
+        bottom.pack(fill="x", pady=(10, 0))
+        ttk.Button(bottom, text="清空日志", command=self.on_clear_expedition_log).pack(side="left")
+        ttk.Button(bottom, text="复制日志", command=self.on_copy_expedition_log).pack(side="left", padx=8)
+
     def _build_ads_tab(self, parent: ttk.Frame):
         left = ttk.Frame(parent)
         left.pack(side="left", fill="y", padx=(0, 12))
@@ -933,6 +1024,10 @@ class AppGUI:
             if self.txt_ads_log is not None:
                 self.txt_ads_log.insert("end", line, tag)
                 self.txt_ads_log.see("end")
+        elif s.startswith("[EXPEDITION]"):
+            if self.txt_expedition_log is not None:
+                self.txt_expedition_log.insert("end", line, tag)
+                self.txt_expedition_log.see("end")
 
     def _push_log(self, level: str, msg: str):
         """Direct push from GUI thread."""
@@ -1092,7 +1187,13 @@ class AppGUI:
                 time.sleep(0.05)
         except Exception:
             pass
-
+        
+        try:
+            if self.expedition_automation is not None:
+                self.expedition_automation.stop()
+                time.sleep(0.05)
+        except Exception:
+            pass
         self.root.destroy()
 
     def on_toggle_mid_entry_click(self):
@@ -1228,7 +1329,99 @@ class AppGUI:
             tb = traceback.format_exc()
             self._push_log("ERROR", f"[GUI] tower stop() 异常：{e}\n{tb}")
 
+    def on_expedition_start(self):
+        if ExpeditionAutomation is None:
+            messagebox.showerror(
+                "错误",
+                f"ExpeditionAutomation 未导入成功，无法启动。请检查 expedition_automation.py。\n\n{_expedition_import_err}"
+            )
+            return
 
+        window_name = self.var_expedition_window_name.get().strip()
+        if not window_name:
+            messagebox.showwarning("提示", "窗口名不能为空。")
+            return
+
+        role_text = self.var_expedition_role.get()
+        if role_text == "出票位":
+            role = "ticket"
+        else:
+            role = "fighter"
+
+        if self.expedition_automation is None:
+            try:
+                self.expedition_automation = ExpeditionAutomation(
+                    window_name=window_name,
+                    role=role,
+                    auto_resize_window=self._consume_resize_once_flag()
+                )
+                self.expedition_automation.set_callbacks(
+                    log_cb=self.log_cb
+                )
+                self._push_log(
+                    "INFO",
+                    f"[GUI] 已初始化 ExpeditionAutomation(window_name='{window_name}', role='{role}')"
+                )
+            except Exception as e:
+                tb = traceback.format_exc()
+                self._push_log("ERROR", f"[GUI] 初始化 ExpeditionAutomation 失败：{e}\n{tb}")
+                messagebox.showerror("初始化失败", f"{e}")
+                self.expedition_automation = None
+                return
+        else:
+            # 允许不重建实例，直接切换出票位/打手位
+            self.expedition_automation.role = role
+
+        try:
+            self.expedition_automation.start(
+                log_cb=self.log_cb
+            )
+
+            self.var_expedition_running.set("运行中")
+            self.var_expedition_role_show.set(role_text)
+            self.btn_expedition_start.configure(state="disabled")
+            self.btn_expedition_stop.configure(state="normal")
+
+            self._push_log("INFO", f"[GUI] 远征模块已启动，当前身份：{role_text}")
+
+        except Exception as e:
+            tb = traceback.format_exc()
+            self._push_log("ERROR", f"[GUI] 启动 ExpeditionAutomation 失败：{e}\n{tb}")
+            messagebox.showerror("启动失败", f"{e}")
+
+
+    def on_expedition_stop(self):
+        if self.expedition_automation is None:
+            return
+
+        try:
+            self.expedition_automation.stop()
+            self.var_expedition_running.set("未运行")
+            self.btn_expedition_start.configure(state="normal")
+            self.btn_expedition_stop.configure(state="disabled")
+            self._push_log("INFO", "[GUI] 已请求停止远征模块")
+        except Exception as e:
+            tb = traceback.format_exc()
+            self._push_log("ERROR", f"[GUI] expedition stop() 异常：{e}\n{tb}")
+
+
+    def on_clear_expedition_log(self):
+        if self.txt_expedition_log is not None:
+            self.txt_expedition_log.delete("1.0", "end")
+
+
+    def on_copy_expedition_log(self):
+        if self.txt_expedition_log is None:
+            return
+
+        try:
+            content = self.txt_expedition_log.get("1.0", "end-1c")
+            self.root.clipboard_clear()
+            self.root.clipboard_append(content)
+            self._push_log("INFO", "[GUI] 远征日志已复制到剪贴板")
+        except Exception as e:
+            self._push_log("ERROR", f"[GUI] 复制远征日志失败：{e}")
+            
     def on_clear_tower_log(self):
         if self.txt_tower_log is not None:
             self.txt_tower_log.delete("1.0", "end")

@@ -685,7 +685,7 @@ class WorldAutomation:
             if now >= next_click:
                 x, y = self._confirm_xy
                 self.click_at_without_hover(x, y)
-
+                # self.click_at_without_hover(358,831)
                 next_click = now + self._min_click_interval + random.uniform(0.001, 0.003)
             else:
                 time.sleep(0.001)
