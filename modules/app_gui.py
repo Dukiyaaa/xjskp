@@ -10,6 +10,8 @@ app_gui.py
 
 import sys
 import time
+import os
+import json
 import queue
 import traceback
 import tkinter as tk
@@ -37,6 +39,13 @@ try:
 except Exception:
     ExpeditionAutomation = None
     _expedition_import_err = traceback.format_exc()
+
+try:
+    from in_game_option_selector import InGameOptionSelector
+    _skill_selector_import_err = None
+except Exception:
+    InGameOptionSelector = None
+    _skill_selector_import_err = traceback.format_exc()
 
 class AppGUI:
     def __init__(self, root: tk.Tk):
@@ -66,6 +75,13 @@ class AppGUI:
         self.txt_queue_log = None         # 队列日志框
 
         # 本次程序运行中，是否已经执行过一次缩窗
+        self.skill_priority_config_path = os.path.join(
+            os.path.dirname(os.path.abspath(__file__)),
+            "skill_priority.json"
+        )
+        self.skill_priority = self._load_skill_priority()
+        self.lst_skill_priority = None
+
         self.window_resized_once = False
         # ---- Style ----
         self._build_style()
@@ -130,6 +146,9 @@ class AppGUI:
         self.tab_queue = ttk.Frame(self.nb, padding=12)
         self.nb.add(self.tab_queue, text="任务队列")
 
+        self.tab_skill_priority = ttk.Frame(self.nb, padding=12)
+        self.nb.add(self.tab_skill_priority, text="技能优先级")
+
         self.tab_about = ttk.Frame(self.nb, padding=12)
         self.nb.add(self.tab_about, text="设置/关于")
 
@@ -138,6 +157,7 @@ class AppGUI:
         self._build_expedition_tab(self.tab_expedition)
         self._build_ads_tab(self.tab_ads)
         self._build_queue_tab(self.tab_queue)
+        self._build_skill_priority_tab(self.tab_skill_priority)
         self._build_about_tab(self.tab_about)
 
     def _build_world_tab(self, parent: ttk.Frame):
@@ -681,6 +701,174 @@ class AppGUI:
         ts = time.strftime("%H:%M:%S")
         self.txt_queue_log.insert("end", f"{ts} {msg}\n")
         self.txt_queue_log.see("end")
+
+    def _default_skill_priority(self):
+        if InGameOptionSelector is not None:
+            return list(InGameOptionSelector.DEFAULT_SKILL_PRIORITY)
+        return [
+            "hail",
+            "ice",
+            "thermobaric_bomb",
+            "electromagnetic",
+            "gun",
+            "matrix",
+            "airdrop",
+            "electrode_pillar",
+            "vehicle",
+            "ray",
+            "laser",
+            "drone",
+            "tornado",
+            "fuel",
+            "bouncing_projectile",
+            "transition_electron",
+            "air_blade",
+            "spacetime",
+        ]
+
+    def _skill_label_map(self):
+        if InGameOptionSelector is not None:
+            return dict(InGameOptionSelector.SKILL_CATEGORY_LABELS)
+        return {
+            "hail": "冰雹",
+            "ice": "干冰弹",
+            "thermobaric_bomb": "温压弹",
+            "electromagnetic": "电磁",
+            "gun": "枪",
+            "matrix": "矩阵",
+            "airdrop": "空投",
+            "electrode_pillar": "电极柱",
+            "vehicle": "车",
+            "ray": "射线",
+            "laser": "激光",
+            "drone": "无人机",
+            "tornado": "龙卷风",
+            "fuel": "燃油",
+            "bouncing_projectile": "弹球",
+            "transition_electron": "跃迁电子",
+            "air_blade": "气刃",
+            "spacetime": "时空",
+        }
+
+    def _load_skill_priority(self):
+        default_priority = self._default_skill_priority()
+        try:
+            if not os.path.exists(self.skill_priority_config_path):
+                return default_priority
+            with open(self.skill_priority_config_path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            priority = data.get("priority", data if isinstance(data, list) else [])
+            priority = [item for item in priority if item in default_priority]
+            for item in default_priority:
+                if item not in priority:
+                    priority.append(item)
+            return priority
+        except Exception:
+            return default_priority
+
+    def _save_skill_priority(self):
+        try:
+            with open(self.skill_priority_config_path, "w", encoding="utf-8") as f:
+                json.dump({"priority": self.skill_priority}, f, ensure_ascii=False, indent=2)
+            self._push_log("INFO", "[GUI] 技能优先级已保存")
+        except Exception as e:
+            messagebox.showerror("错误", f"保存技能优先级失败：{e}")
+
+    def get_skill_priority_config(self):
+        return list(self.skill_priority)
+
+    def _apply_skill_priority_to_module(self, module):
+        if module is None:
+            return
+        priority = self.get_skill_priority_config()
+        try:
+            if hasattr(module, "set_skill_priority"):
+                module.set_skill_priority(priority)
+            else:
+                setattr(module, "skill_priority", priority)
+        except Exception as e:
+            self._push_log("WARN", f"[GUI] 应用技能优先级失败：{e}")
+
+    def _refresh_skill_priority_listbox(self):
+        if self.lst_skill_priority is None:
+            return
+        label_map = self._skill_label_map()
+        self.lst_skill_priority.delete(0, "end")
+        for index, skill in enumerate(self.skill_priority, start=1):
+            label = label_map.get(skill, skill)
+            self.lst_skill_priority.insert("end", f"{index:02d}. {label} ({skill})")
+
+    def _build_skill_priority_tab(self, parent: ttk.Frame):
+        left = ttk.Frame(parent)
+        left.pack(side="left", fill="both", expand=False, padx=(0, 12))
+
+        right = ttk.Frame(parent)
+        right.pack(side="right", fill="both", expand=True)
+
+        grp = ttk.LabelFrame(left, text="技能优先级", padding=10)
+        grp.pack(fill="both", expand=True)
+
+        ttk.Label(grp, text="从上到下优先级由高到低").pack(anchor="w", pady=(0, 6))
+
+        self.lst_skill_priority = tk.Listbox(grp, height=22, width=42, exportselection=False)
+        self.lst_skill_priority.pack(fill="both", expand=True)
+
+        btns = ttk.Frame(grp)
+        btns.pack(fill="x", pady=(10, 0))
+
+        ttk.Button(btns, text="上移", command=self.on_skill_priority_move_up).pack(side="left")
+        ttk.Button(btns, text="下移", command=self.on_skill_priority_move_down).pack(side="left", padx=6)
+        ttk.Button(btns, text="恢复默认", command=self.on_skill_priority_reset).pack(side="left", padx=6)
+
+        btns2 = ttk.Frame(grp)
+        btns2.pack(fill="x", pady=(8, 0))
+        ttk.Button(btns2, text="保存配置", command=self.on_skill_priority_save).pack(side="left")
+        ttk.Button(btns2, text="重新加载", command=self.on_skill_priority_reload).pack(side="left", padx=6)
+
+        info = ttk.LabelFrame(right, text="说明", padding=10)
+        info.pack(fill="both", expand=True)
+        msg = (
+            "这里配置的是自动选技能的全局优先级。\n\n"
+            "后续抢环、爬塔模块接入 InGameOptionSelector 时，"
+            "会读取这份顺序作为选择依据。\n\n"
+            "如果三张卡里有同优先级/同技能，选择最左边。"
+        )
+        ttk.Label(info, text=msg, justify="left", wraplength=440).pack(anchor="nw")
+
+        self._refresh_skill_priority_listbox()
+
+    def on_skill_priority_move_up(self):
+        sel = self.lst_skill_priority.curselection() if self.lst_skill_priority is not None else ()
+        if not sel:
+            return
+        i = sel[0]
+        if i <= 0:
+            return
+        self.skill_priority[i - 1], self.skill_priority[i] = self.skill_priority[i], self.skill_priority[i - 1]
+        self._refresh_skill_priority_listbox()
+        self.lst_skill_priority.selection_set(i - 1)
+
+    def on_skill_priority_move_down(self):
+        sel = self.lst_skill_priority.curselection() if self.lst_skill_priority is not None else ()
+        if not sel:
+            return
+        i = sel[0]
+        if i >= len(self.skill_priority) - 1:
+            return
+        self.skill_priority[i + 1], self.skill_priority[i] = self.skill_priority[i], self.skill_priority[i + 1]
+        self._refresh_skill_priority_listbox()
+        self.lst_skill_priority.selection_set(i + 1)
+
+    def on_skill_priority_reset(self):
+        self.skill_priority = self._default_skill_priority()
+        self._refresh_skill_priority_listbox()
+
+    def on_skill_priority_save(self):
+        self._save_skill_priority()
+
+    def on_skill_priority_reload(self):
+        self.skill_priority = self._load_skill_priority()
+        self._refresh_skill_priority_listbox()
     
     def on_queue_start(self):
         if self.queue_running:
@@ -781,6 +969,7 @@ class AppGUI:
                         counter_cb=self.counter_cb,
                         world_counts_cb=self.world_counts_cb
                     )
+                    self._apply_skill_priority_to_module(self.automation)
                     self.btn_ads_power_start.configure(state="normal")
                     self._push_log("INFO", f"[GUI] 已初始化 WorldAutomation(window_name='{window_name}')")
 
@@ -813,6 +1002,7 @@ class AppGUI:
                         log_cb=self.log_cb,
                         current_page_cb=self.current_page_cb
                     )
+                    self._apply_skill_priority_to_module(self.tower_automation)
                     self._push_log("INFO", f"[GUI] 已初始化 TowerAutomation(window_name='{window_name}')")
 
                 self.tower_automation.start(
@@ -1074,6 +1264,7 @@ class AppGUI:
                     counter_cb=self.counter_cb,
                     world_counts_cb=self.world_counts_cb
                 )
+                self._apply_skill_priority_to_module(self.automation)
                 self.btn_ads_power_start.configure(state="normal")
                 self._push_log("INFO", f"[GUI] 已初始化 WorldAutomation(window_name='{window_name}')")
             except Exception as e:
@@ -1293,6 +1484,7 @@ class AppGUI:
                     log_cb=self.log_cb,
                     current_page_cb=self.current_page_cb
                 )
+                self._apply_skill_priority_to_module(self.tower_automation)
                 self._push_log("INFO", f"[GUI] 已初始化 TowerAutomation(window_name='{window_name}')")
             except Exception as e:
                 tb = traceback.format_exc()
