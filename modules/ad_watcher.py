@@ -38,7 +38,9 @@ class AdWatcher:
             # 开始看广告后的广告模板
             "ad": resource_path(r"images\template\ad.png"),
             # 开始看广告后的关闭模板
-            "ad_close": resource_path(r"images\template\ad_close.png"),
+            "ad_close_1": resource_path(r"images\template\ad_close_1.png"),
+            "ad_close_2": resource_path(r"images\template\ad_close_2.png"),
+            "ad_close_3": resource_path(r"images\template\ad_close_3.png"),
             # 获得奖励模板
             "reward_got": resource_path(r"images\template\reward_got.png"),
             "ad_cancel":resource_path(r"images\template\ad_cancel.png"),
@@ -46,6 +48,7 @@ class AdWatcher:
 
         self.template_paths = template_paths
         self.template_matcher = TemplateMatcher(template_paths)
+        self.AD_CLOSE_TEMPLATES = ("ad_close_1", "ad_close_2", "ad_close_3")
 
         # 限定ROI
         # ROI: (x1, y1, x2, y2)  —— 基于 774x1487
@@ -60,6 +63,9 @@ class AdWatcher:
             "power": self.ROI_POWER,
             "power_free": self.ROI_POWER_FREE,
             "ad_close": self.ROI_AD_CLOSE,
+            "ad_close_1": self.ROI_AD_CLOSE,
+            "ad_close_2": self.ROI_AD_CLOSE,
+            "ad_close_3": self.ROI_AD_CLOSE,
             "reward_got": self.ROI_REWARD_GOT,
             "ad": self.ROI_AD,
             "ad_cancel": self.ROI_AD_CANCEL
@@ -178,6 +184,16 @@ class AdWatcher:
         self._log(f"[ROI_SCORE] {tpl_name} roi={roi} max={max_val:.3f} loc={max_loc}")
 
     def ad_find_button(self, scene_bgr, template_name, thr=0.90):
+        if template_name == "ad_close":
+            for close_name in self.AD_CLOSE_TEMPLATES:
+                roi = self.TPL_ROI[close_name]
+                found, score, top_left, tpl_hw = self.template_matcher.match_template_in_roi(
+                    scene_bgr, close_name, roi, threshold=thr
+                )
+                if found:
+                    return self.template_matcher.get_center_position(top_left, tpl_hw)
+            return None
+
         roi = self.TPL_ROI.get(template_name)
         if roi:
             found, score, top_left, tpl_hw = self.template_matcher.match_template_in_roi(

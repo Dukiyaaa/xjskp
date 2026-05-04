@@ -724,7 +724,7 @@ class WorldAutomation:
         max_score = 0.0
         ret = None
 
-        for i in range(17):
+        for i in range(20):
             template_name = f"world_diff_{i + 1}"
 
             found, score, top_left, tpl_hw = self.template_matcher.match_template(
@@ -735,10 +735,10 @@ class WorldAutomation:
 
             if found:
                 if score > 0.99:
-                    # self._log(f"get_world_diff: {template_name} get high score, score={score}")
+                    self._log(f"get_world_diff: {template_name} get high score, score={score}")
                     return i + 1
 
-                if score > max_score:
+                if score >= max_score:
                     max_score = score
                     ret = i + 1
 
