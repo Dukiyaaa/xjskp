@@ -41,6 +41,27 @@ def resource_path(rel_path: str) -> str:
     return os.path.join(os.path.dirname(os.path.abspath(__file__)), rel_path)
 
 # ---------------------- 环球抢票类，包含抢票、判断等级、退出队伍 ----------------------
+def format_skill_choice_log(results, chosen_index) -> str:
+    labels = InGameOptionSelector.SKILL_CATEGORY_LABELS
+    parts = []
+    for result in results:
+        card_no = result.get("index", 0) + 1
+        category = result.get("category")
+        label = labels.get(category, category) if category else "未知"
+        score = result.get("score", 0.0)
+        parts.append(f"卡{card_no}:{label}({score:.2f})")
+
+    if chosen_index is None:
+        chosen = "未选择"
+    else:
+        chosen_result = results[chosen_index]
+        category = chosen_result.get("category")
+        label = labels.get(category, category) if category else "未知"
+        chosen = f"卡{chosen_index + 1}:{label}"
+
+    return f"[SKILL] 识别结果：{' | '.join(parts)}；最终点击：{chosen}"
+
+
 class WorldAutomation:
     def __init__(self, window_name="向僵尸开炮", auto_resize_window=False):
         # 用于记录每个“环球救援”任务的计数器
@@ -49,7 +70,7 @@ class WorldAutomation:
         self.world_counts_cb = None
 
         # 给自己用还是给别人用
-        self.use_tmp_world_diff_templates = True
+        self.use_tmp_world_diff_templates = False
         # 模板路径字典，存储多个模板路径
         template_paths = {
             # 主页：开始游戏
@@ -251,7 +272,7 @@ class WorldAutomation:
             "roi_game_over_return": (348, 1292, 442, 1337),
 
             "team_world_text": (400, 188, 644, 260),
-            "team_world_text_tmp": (150, 188, 644, 260),
+            "team_world_text_tmp": (119, 157, 678, 337),
             "start_game_text": (288, 1186, 492, 1242),
             "team_leave_text": (645, 1188, 698, 1222),
             "in_game_diff_text": (400, 103, 516, 148),
@@ -272,6 +293,7 @@ class WorldAutomation:
         self.RETRY = 0
         # 想打的最低级环
         self.EXPECT_DIFF = 7
+        self.world_diff_match_threshold = 0.90
         # 状态机管理 0:主页 1:聊天框 2:招募框 3:组队页面
         self.VIEW = 0
         # 鼠标点击间隔
@@ -775,7 +797,7 @@ class WorldAutomation:
             found, score, top_left, tpl_hw = self.template_matcher.match_template(
                 roi_img,
                 template_name,
-                threshold=0.97
+                threshold=getattr(self, "world_diff_match_threshold", 0.90)
             )
 
             if found:
@@ -1604,7 +1626,12 @@ class WorldAutomation:
         if getattr(self, "mid_entry_click_enabled", True):
             try:
                 if self.option_selector.step(scene_bgr, self.click_at_without_hover):
-                    self._log("[SKILL] 智能选词条已点击")
+                    self._log(
+                        format_skill_choice_log(
+                            self.option_selector.last_results,
+                            self.option_selector.last_chosen_index,
+                        )
+                    )
                     time.sleep(0.8)
                     return
             except Exception as exc:

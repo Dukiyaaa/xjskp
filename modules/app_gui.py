@@ -211,6 +211,11 @@ class AppGUI:
         ent_click_interval = ttk.Entry(param_row, textvariable=self.var_click_interval, width=8)
         ent_click_interval.grid(row=0, column=3, sticky="w", padx=(8, 0))
 
+        ttk.Label(param_row, text="\u96be\u5ea6\u8bc6\u522b\u9608\u503c").grid(row=1, column=0, sticky="w", pady=(6, 0))
+        self.var_world_diff_threshold = tk.StringVar(value="0.90")
+        ent_world_diff_threshold = ttk.Entry(param_row, textvariable=self.var_world_diff_threshold, width=8)
+        ent_world_diff_threshold.grid(row=1, column=1, sticky="w", padx=(8, 24), pady=(6, 0))
+
         # Buttons row
         btn_row = ttk.Frame(grp)
         btn_row.grid(row=2, column=0, columnspan=2, sticky="we", pady=(6, 0))
@@ -231,7 +236,7 @@ class AppGUI:
         self.var_mid_entry_click = tk.BooleanVar(value=True)
         self.chk_mid_entry = ttk.Checkbutton(
             grp,
-            text="战斗时随机点击词条、先锋技能、机甲",
+            text="\u6218\u6597\u4e2d\u667a\u80fd\u9009\u8bcd\u6761",
             variable=self.var_mid_entry_click,
             command=self.on_toggle_mid_entry_click
         )
@@ -1401,6 +1406,14 @@ class AppGUI:
             messagebox.showwarning("提示", "连点间隔必须是大于0的小数，例如 0.03")
             return
 
+        try:
+            world_diff_threshold = float(self.var_world_diff_threshold.get().strip())
+            if world_diff_threshold <= 0 or world_diff_threshold > 1:
+                raise ValueError
+        except Exception:
+            messagebox.showwarning("\u63d0\u793a", "\u96be\u5ea6\u8bc6\u522b\u9608\u503c\u9700\u8981\u662f 0~1 \u4e4b\u95f4\u7684\u5c0f\u6570\uff0c\u4f8b\u5982 0.90")
+            return
+
         invite_only = self.var_invite_only.get()
 
         # Create module instance if needed
@@ -1437,6 +1450,7 @@ class AppGUI:
             # 同步 GUI 开关状态
             self.automation.mid_entry_click_enabled = self.var_mid_entry_click.get()
             self.automation._min_click_interval = click_interval
+            self.automation.world_diff_match_threshold = world_diff_threshold
             self.automation.start(
                 expect_diff=expect_diff,
                 invite_only=invite_only,
