@@ -509,12 +509,12 @@ class AppGUI:
         )
 
         ttk.Label(grp, text="\u5339\u914d\u9608\u503c").grid(row=3, column=0, sticky="w", pady=(0, 6))
-        self.var_mutual_world_threshold = tk.StringVar(value="0.85")
+        self.var_mutual_world_threshold = tk.StringVar(value="0.95")
         ttk.Entry(grp, textvariable=self.var_mutual_world_threshold, width=8).grid(
             row=3, column=1, sticky="w", pady=(0, 6)
         )
 
-        self.var_mutual_world_smart_option = tk.BooleanVar(value=False)
+        self.var_mutual_world_smart_option = tk.BooleanVar(value=True)
         ttk.Checkbutton(
             grp,
             text="\u6218\u6597\u4e2d\u667a\u80fd\u9009\u6280\u80fd",
