@@ -71,6 +71,7 @@ class MutualWorldAutomation:
 
     PT = {
         "start_game": (384, 1239),
+        "ticket_start_game_after_friend_join": (402, 1359),
         "game_over_return": (393, 1324),
         "team_invitation_accept": (582, 377),
         "team_invitation_refuse": (582, 445),
@@ -640,10 +641,9 @@ class MutualWorldAutomation:
 
         if self.is_team_page(feats):
             self._emit_page("team")
-            start_pos = feats.get("start_game")
-            if start_pos and not feats.get("master_left") and now - self._last_invite_ts >= self.start_after_invite_delay:
+            if not feats.get("master_left") and now - self._last_invite_ts >= self.start_after_invite_delay:
                 self._log("队友已入队，点击开始游戏")
-                self._safe_click(start_pos, "start_game", sleep_after=2.0)
+                self._safe_click(self.PT["ticket_start_game_after_friend_join"], "start_game", sleep_after=2.0)
                 self._invite_pending = False
                 return
 
