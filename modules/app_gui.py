@@ -15,7 +15,7 @@ import json
 import queue
 import traceback
 import tkinter as tk
-from tkinter import ttk, messagebox
+from tkinter import ttk, messagebox, filedialog
 
 # from sympy.codegen.ast import String
 
@@ -39,6 +39,13 @@ try:
 except Exception:
     ExpeditionAutomation = None
     _expedition_import_err = traceback.format_exc()
+
+try:
+    from mutual_world_automation import MutualWorldAutomation
+    _mutual_world_import_err = None
+except Exception:
+    MutualWorldAutomation = None
+    _mutual_world_import_err = traceback.format_exc()
 
 try:
     from in_game_option_selector import InGameOptionSelector
@@ -66,6 +73,10 @@ class AppGUI:
         self.txt_tower_log = None
         self.expedition_automation = None
         self.txt_expedition_log = None
+        self.mutual_world_automation = None
+        self.txt_mutual_world_log = None
+        self.mutual_world_friend_templates = {}
+        self.cmb_mutual_world_friend = None
 
         # 任务队列模块
         self.task_queue = []              # 队列数据
@@ -139,6 +150,9 @@ class AppGUI:
         self.nb.add(self.tab_expedition, text="自动远征")
 
         # 新增：看广告
+        self.tab_mutual_world = ttk.Frame(self.nb, padding=12)
+        self.nb.add(self.tab_mutual_world, text="\u4e92\u73af\u6a21\u5f0f")
+
         self.tab_ads = ttk.Frame(self.nb, padding=12)
         self.nb.add(self.tab_ads, text="自动看广告")
 
@@ -155,6 +169,7 @@ class AppGUI:
         self._build_world_tab(self.tab_world)
         self._build_tower_tab(self.tab_tower)
         self._build_expedition_tab(self.tab_expedition)
+        self._build_mutual_world_tab(self.tab_mutual_world)
         self._build_ads_tab(self.tab_ads)
         self._build_queue_tab(self.tab_queue)
         self._build_skill_priority_tab(self.tab_skill_priority)
@@ -450,6 +465,116 @@ class AppGUI:
         bottom.pack(fill="x", pady=(10, 0))
         ttk.Button(bottom, text="清空日志", command=self.on_clear_expedition_log).pack(side="left")
         ttk.Button(bottom, text="复制日志", command=self.on_copy_expedition_log).pack(side="left", padx=8)
+
+    def _build_mutual_world_tab(self, parent: ttk.Frame):
+        left = ttk.Frame(parent)
+        left.pack(side="left", fill="y", padx=(0, 12))
+
+        right = ttk.Frame(parent)
+        right.pack(side="right", fill="both", expand=True)
+
+        grp = ttk.LabelFrame(left, text="\u4e92\u73af\u8bbe\u7f6e", padding=10)
+        grp.pack(fill="x")
+
+        ttk.Label(grp, text="\u7a97\u53e3\u540d(FindWindow)").grid(row=0, column=0, sticky="w", pady=(0, 6))
+        self.var_mutual_world_window_name = tk.StringVar(value="\u5411\u50f5\u5c38\u5f00\u70ae")
+        ttk.Entry(grp, textvariable=self.var_mutual_world_window_name, width=24).grid(
+            row=0, column=1, sticky="w", pady=(0, 6)
+        )
+
+        ttk.Label(grp, text="\u8eab\u4efd").grid(row=1, column=0, sticky="w", pady=(0, 6))
+        self.var_mutual_world_role = tk.StringVar(value="\u51fa\u7968\u4f4d")
+        cmb_role = ttk.Combobox(
+            grp,
+            textvariable=self.var_mutual_world_role,
+            values=["\u51fa\u7968\u4f4d", "\u975e\u51fa\u7968\u4f4d"],
+            state="readonly",
+            width=21
+        )
+        cmb_role.grid(row=1, column=1, sticky="w", pady=(0, 6))
+        cmb_role.bind("<<ComboboxSelected>>", self.on_mutual_world_friend_changed)
+
+        ttk.Label(grp, text="\u6a21\u677f\u6587\u4ef6").grid(row=2, column=0, sticky="w", pady=(0, 6))
+        self.var_mutual_world_friend_template = tk.StringVar(value="")
+        ttk.Entry(grp, textvariable=self.var_mutual_world_friend_template, width=24).grid(
+            row=2, column=1, sticky="w", pady=(0, 6)
+        )
+        ttk.Button(grp, text="\u9009\u62e9", command=self.on_mutual_world_choose_template).grid(
+            row=2, column=2, sticky="w", padx=(6, 0), pady=(0, 6)
+        )
+
+        ttk.Label(grp, text="\u5339\u914d\u9608\u503c").grid(row=3, column=0, sticky="w", pady=(0, 6))
+        self.var_mutual_world_threshold = tk.StringVar(value="0.85")
+        ttk.Entry(grp, textvariable=self.var_mutual_world_threshold, width=8).grid(
+            row=3, column=1, sticky="w", pady=(0, 6)
+        )
+
+        self.var_mutual_world_smart_option = tk.BooleanVar(value=False)
+        ttk.Checkbutton(
+            grp,
+            text="\u6218\u6597\u4e2d\u667a\u80fd\u9009\u6280\u80fd",
+            variable=self.var_mutual_world_smart_option
+        ).grid(row=4, column=0, columnspan=3, sticky="w", pady=(4, 0))
+
+        btn_row = ttk.Frame(grp)
+        btn_row.grid(row=5, column=0, columnspan=3, sticky="we", pady=(6, 0))
+        btn_row.columnconfigure(0, weight=1)
+        btn_row.columnconfigure(1, weight=1)
+
+        self.btn_mutual_world_start = ttk.Button(btn_row, text="\u542f\u52a8", command=self.on_mutual_world_start)
+        self.btn_mutual_world_start.grid(row=0, column=0, sticky="we", padx=(0, 6))
+
+        self.btn_mutual_world_stop = ttk.Button(
+            btn_row,
+            text="\u505c\u6b62",
+            command=self.on_mutual_world_stop,
+            state="disabled"
+        )
+        self.btn_mutual_world_stop.grid(row=0, column=1, sticky="we")
+
+        grp_state = ttk.LabelFrame(left, text="\u72b6\u6001", padding=10)
+        grp_state.pack(fill="x", pady=(12, 0))
+
+        self.var_mutual_world_running = tk.StringVar(value="\u672a\u8fd0\u884c")
+        ttk.Label(grp_state, text="\u8fd0\u884c\u72b6\u6001").grid(row=0, column=0, sticky="w")
+        ttk.Label(grp_state, textvariable=self.var_mutual_world_running).grid(row=0, column=1, sticky="w")
+
+        self.var_mutual_world_page = tk.StringVar(value="\u672a\u77e5")
+        ttk.Label(grp_state, text="\u5f53\u524d\u9875\u9762").grid(row=1, column=0, sticky="w", pady=(8, 0))
+        ttk.Label(grp_state, textvariable=self.var_mutual_world_page).grid(row=1, column=1, sticky="w", pady=(8, 0))
+
+        self.var_mutual_world_friend_name = tk.StringVar(value="\u4f46\u6b32\u5b63\u5b63\u5982\u6625")
+        ttk.Label(grp_state, text="\u961f\u53cb").grid(row=2, column=0, sticky="w", pady=(8, 0))
+        self.cmb_mutual_world_friend = ttk.Combobox(
+            grp_state,
+            textvariable=self.var_mutual_world_friend_name,
+            values=["\u4f46\u6b32\u5b63\u5b63\u5982\u6625", "\u5929\u5929\u5f00\u5fc3", "\u6625\u98ce\u5341\u91cc"],
+            state="readonly",
+            width=21
+        )
+        self.cmb_mutual_world_friend.grid(row=2, column=1, sticky="w", pady=(8, 0))
+        self.cmb_mutual_world_friend.bind("<<ComboboxSelected>>", self.on_mutual_world_friend_changed)
+
+        log_grp = ttk.LabelFrame(right, text="\u4e92\u73af\u65e5\u5fd7", padding=10)
+        log_grp.pack(fill="both", expand=True)
+
+        self.txt_mutual_world_log = tk.Text(log_grp, wrap="word", height=24)
+        self.txt_mutual_world_log.pack(side="left", fill="both", expand=True)
+
+        sb = ttk.Scrollbar(log_grp, orient="vertical", command=self.txt_mutual_world_log.yview)
+        sb.pack(side="right", fill="y")
+        self.txt_mutual_world_log.configure(yscrollcommand=sb.set)
+
+        self.txt_mutual_world_log.tag_configure("INFO", foreground="#1f6feb")
+        self.txt_mutual_world_log.tag_configure("WARN", foreground="#b58900")
+        self.txt_mutual_world_log.tag_configure("ERROR", foreground="#d73a49")
+        self.txt_mutual_world_log.tag_configure("DEBUG", foreground="#6a737d")
+
+        bottom = ttk.Frame(right)
+        bottom.pack(fill="x", pady=(10, 0))
+        ttk.Button(bottom, text="\u6e05\u7a7a\u65e5\u5fd7", command=self.on_clear_mutual_world_log).pack(side="left")
+        ttk.Button(bottom, text="\u590d\u5236\u65e5\u5fd7", command=self.on_copy_mutual_world_log).pack(side="left", padx=8)
+        self.on_mutual_world_friend_changed()
 
     def _build_ads_tab(self, parent: ttk.Frame):
         left = ttk.Frame(parent)
@@ -1149,6 +1274,20 @@ class AppGUI:
         """ 环球救援统计（dict） """
         self.msg_queue.put(("WORLD_COUNTS", world_counts))
         self._push_log("DEBUG", f"[GUI] 接收到 WORLD_COUNTS 更新: {world_counts}")  # 调试信息
+    def mutual_world_log_cb(self, msg: str):
+        level = "INFO"
+        s = msg.strip()
+        if s.startswith("[ERROR]") or "ERROR" in s[:20]:
+            level = "ERROR"
+        elif s.startswith("[WARN]") or s.startswith("[WARNING]") or "WARN" in s[:20]:
+            level = "WARN"
+        elif s.startswith("[DEBUG]") or s.startswith("[STATE]"):
+            level = "DEBUG"
+        self.msg_queue.put((level, msg))
+
+    def mutual_world_page_cb(self, page: str):
+        self.msg_queue.put(("MUTUAL_WORLD_PAGE", page))
+
     # ---------------- Queue polling (GUI thread) ----------------
     def _poll_queue(self):
         try:
@@ -1172,6 +1311,16 @@ class AppGUI:
                     for key, val in wc.items():
                         if key in self.var_world_counts:
                             self.var_world_counts[key].set(str(val))
+                elif kind == "MUTUAL_WORLD_PAGE":
+                    page_map = {
+                        "team": "\u7ec4\u961f\u9875",
+                        "battle": "\u6218\u6597\u4e2d",
+                        "result": "\u7ed3\u7b97\u9875",
+                        "invitation": "\u9080\u8bf7\u5f39\u7a97",
+                        "waiting_invite": "\u7b49\u5f85\u9080\u8bf7",
+                        "unknown": "\u672a\u77e5",
+                    }
+                    self.var_mutual_world_page.set(page_map.get(payload, str(payload)))
                 elif kind == "AD_POWER_DONE":
                     ok = payload["ok"]
                     reason = payload["reason"]
@@ -1218,6 +1367,10 @@ class AppGUI:
             if self.txt_expedition_log is not None:
                 self.txt_expedition_log.insert("end", line, tag)
                 self.txt_expedition_log.see("end")
+        elif s.startswith("[MUTUAL_WORLD]"):
+            if self.txt_mutual_world_log is not None:
+                self.txt_mutual_world_log.insert("end", line, tag)
+                self.txt_mutual_world_log.see("end")
 
     def _push_log(self, level: str, msg: str):
         """Direct push from GUI thread."""
@@ -1382,6 +1535,12 @@ class AppGUI:
         try:
             if self.expedition_automation is not None:
                 self.expedition_automation.stop()
+                time.sleep(0.05)
+        except Exception:
+            pass
+        try:
+            if self.mutual_world_automation is not None:
+                self.mutual_world_automation.stop()
                 time.sleep(0.05)
         except Exception:
             pass
@@ -1596,6 +1755,197 @@ class AppGUI:
             tb = traceback.format_exc()
             self._push_log("ERROR", f"[GUI] expedition stop() 异常：{e}\n{tb}")
 
+
+    def _mutual_world_friend_template_candidates(self, friend_name: str, role: str = "ticket"):
+        template_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "images", "template")
+        role_prefix = "no_ticket" if role == "non_ticket" else "ticket"
+        alias_map = {
+            "\u5929\u5929\u5f00\u5fc3": [
+                f"{role_prefix}_friend_tiantiankaixin.png",
+                "friend_tiantiankaixin.png",
+            ],
+            "\u4f46\u6b32\u5b63\u5b63\u5982\u6625": [
+                f"{role_prefix}_friend_danyujijiruchun.png",
+                "friend_danyujijiruchun.png",
+            ],
+            "\u6625\u98ce\u5341\u91cc": [
+                f"{role_prefix}_friend_chunfengshili.png",
+                "friend_chunfengshili.png",
+            ],
+        }
+        names = [
+            *alias_map.get(friend_name, []),
+            f"{friend_name}.png",
+            f"friend_{friend_name}.png",
+            f"teammate_{friend_name}.png",
+        ]
+        return [os.path.join(template_dir, name) for name in names]
+
+    def _resolve_mutual_world_friend_template(self, friend_name: str, role: str = "ticket"):
+        manual_key = (role, friend_name)
+        if manual_key in self.mutual_world_friend_templates:
+            return self.mutual_world_friend_templates[manual_key]
+        if friend_name in self.mutual_world_friend_templates:
+            return self.mutual_world_friend_templates[friend_name]
+        for path in self._mutual_world_friend_template_candidates(friend_name, role=role):
+            if os.path.exists(path):
+                return path
+        return ""
+
+    def _get_mutual_world_role(self):
+        role_text = self.var_mutual_world_role.get().strip()
+        return "non_ticket" if role_text == "\u975e\u51fa\u7968\u4f4d" else "ticket"
+
+    def _refresh_mutual_world_friend_combo(self):
+        if self.cmb_mutual_world_friend is None:
+            return
+        names = ["\u4f46\u6b32\u5b63\u5b63\u5982\u6625", "\u5929\u5929\u5f00\u5fc3", "\u6625\u98ce\u5341\u91cc"]
+        for key in self.mutual_world_friend_templates:
+            name = key[1] if isinstance(key, tuple) else key
+            if name not in names:
+                names.append(name)
+        self.cmb_mutual_world_friend.configure(values=names)
+
+    def on_mutual_world_friend_changed(self, event=None):
+        friend_name = self.var_mutual_world_friend_name.get().strip()
+        role = self._get_mutual_world_role()
+        self.var_mutual_world_friend_template.set(
+            self._resolve_mutual_world_friend_template(friend_name, role=role)
+        )
+
+    def on_mutual_world_choose_template(self):
+        path = filedialog.askopenfilename(
+            title="\u9009\u62e9\u961f\u53cb\u6a21\u677f",
+            filetypes=[
+                ("Image files", "*.png;*.jpg;*.jpeg;*.bmp"),
+                ("All files", "*.*"),
+            ]
+        )
+        if path:
+            friend_name = os.path.splitext(os.path.basename(path))[0]
+            role = self._get_mutual_world_role()
+            self.mutual_world_friend_templates[(role, friend_name)] = path
+            self.var_mutual_world_friend_name.set(friend_name)
+            self._refresh_mutual_world_friend_combo()
+            self.var_mutual_world_friend_template.set(path)
+
+    def on_mutual_world_start(self):
+        if MutualWorldAutomation is None:
+            messagebox.showerror(
+                "\u9519\u8bef",
+                f"MutualWorldAutomation \u672a\u5bfc\u5165\u6210\u529f\uff0c\u65e0\u6cd5\u542f\u52a8\u3002\n\n{_mutual_world_import_err}"
+            )
+            return
+
+        window_name = self.var_mutual_world_window_name.get().strip()
+        if not window_name:
+            messagebox.showwarning("\u63d0\u793a", "\u7a97\u53e3\u540d\u4e0d\u80fd\u4e3a\u7a7a")
+            return
+
+        role_text = self.var_mutual_world_role.get().strip()
+        role = "non_ticket" if role_text == "\u975e\u51fa\u7968\u4f4d" else "ticket"
+        friend_name = self.var_mutual_world_friend_name.get().strip()
+        friend_template = self.var_mutual_world_friend_template.get().strip()
+        template_basename = os.path.basename(friend_template)
+        auto_template_names = {
+            "friend_tiantiankaixin.png",
+            "ticket_friend_tiantiankaixin.png",
+            "no_ticket_friend_tiantiankaixin.png",
+            "friend_danyujijiruchun.png",
+            "ticket_friend_danyujijiruchun.png",
+            "no_ticket_friend_danyujijiruchun.png",
+            "friend_chunfengshili.png",
+            "ticket_friend_chunfengshili.png",
+            "no_ticket_friend_chunfengshili.png",
+        }
+        if not friend_template or template_basename in auto_template_names:
+            friend_template = self._resolve_mutual_world_friend_template(friend_name, role=role)
+            self.var_mutual_world_friend_template.set(friend_template)
+
+        try:
+            threshold = float(self.var_mutual_world_threshold.get().strip())
+            if threshold <= 0 or threshold > 1:
+                raise ValueError
+        except Exception:
+            messagebox.showwarning("\u63d0\u793a", "\u5339\u914d\u9608\u503c\u9700\u8981\u662f 0~1 \u4e4b\u95f4\u7684\u5c0f\u6570\uff0c\u4f8b\u5982 0.85")
+            return
+
+        smart_option_enabled = self.var_mutual_world_smart_option.get()
+
+        if self.mutual_world_automation is None:
+            try:
+                self.mutual_world_automation = MutualWorldAutomation(
+                    window_name=window_name,
+                    role=role,
+                    friend_name=friend_name,
+                    friend_template_path=friend_template,
+                    friend_match_threshold=threshold,
+                    smart_option_enabled=smart_option_enabled,
+                    auto_resize_window=self._consume_resize_once_flag()
+                )
+                self.mutual_world_automation.set_callbacks(
+                    log_cb=self.mutual_world_log_cb,
+                    current_page_cb=self.mutual_world_page_cb
+                )
+                self._apply_skill_priority_to_module(self.mutual_world_automation)
+                self._push_log("INFO", f"[GUI] MutualWorldAutomation initialized role={role_text}")
+            except Exception as e:
+                tb = traceback.format_exc()
+                self._push_log("ERROR", f"[GUI] MutualWorldAutomation init failed: {e}\n{tb}")
+                messagebox.showerror("\u521d\u59cb\u5316\u5931\u8d25", f"{e}")
+                self.mutual_world_automation = None
+                return
+        else:
+            self.mutual_world_automation.role = role
+            self.mutual_world_automation.friend_name = friend_name
+            self.mutual_world_automation.friend_match_threshold = threshold
+            self.mutual_world_automation.smart_option_enabled = smart_option_enabled
+            self.mutual_world_automation.set_friend_template_path(friend_template)
+            self._apply_skill_priority_to_module(self.mutual_world_automation)
+
+        try:
+            self.mutual_world_automation.start(
+                role=role,
+                log_cb=self.mutual_world_log_cb,
+                current_page_cb=self.mutual_world_page_cb
+            )
+            self.var_mutual_world_running.set("\u8fd0\u884c\u4e2d")
+            self.var_mutual_world_page.set("\u672a\u77e5")
+            self.btn_mutual_world_start.configure(state="disabled")
+            self.btn_mutual_world_stop.configure(state="normal")
+            self._push_log("INFO", f"[GUI] \u4e92\u73af\u6a21\u5f0f\u5df2\u542f\u52a8\uff0c\u8eab\u4efd={role_text}")
+        except Exception as e:
+            tb = traceback.format_exc()
+            self._push_log("ERROR", f"[GUI] MutualWorldAutomation start failed: {e}\n{tb}")
+            messagebox.showerror("\u542f\u52a8\u5931\u8d25", f"{e}")
+
+    def on_mutual_world_stop(self):
+        if self.mutual_world_automation is None:
+            return
+        try:
+            self.mutual_world_automation.stop()
+            self.var_mutual_world_running.set("\u672a\u8fd0\u884c")
+            self.btn_mutual_world_start.configure(state="normal")
+            self.btn_mutual_world_stop.configure(state="disabled")
+            self._push_log("INFO", "[GUI] \u4e92\u73af\u6a21\u5f0f\u5df2\u505c\u6b62")
+        except Exception as e:
+            tb = traceback.format_exc()
+            self._push_log("ERROR", f"[GUI] mutual world stop failed: {e}\n{tb}")
+
+    def on_clear_mutual_world_log(self):
+        if self.txt_mutual_world_log is not None:
+            self.txt_mutual_world_log.delete("1.0", "end")
+
+    def on_copy_mutual_world_log(self):
+        if self.txt_mutual_world_log is None:
+            return
+        try:
+            content = self.txt_mutual_world_log.get("1.0", "end-1c")
+            self.root.clipboard_clear()
+            self.root.clipboard_append(content)
+            self._push_log("INFO", "[GUI] \u4e92\u73af\u65e5\u5fd7\u5df2\u590d\u5236")
+        except Exception as e:
+            self._push_log("ERROR", f"[GUI] \u590d\u5236\u4e92\u73af\u65e5\u5fd7\u5931\u8d25: {e}")
 
     def on_clear_expedition_log(self):
         if self.txt_expedition_log is not None:

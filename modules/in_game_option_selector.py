@@ -174,6 +174,10 @@ class InGameOptionSelector:
         self._min_step_interval = 0.30  # 300ms 轮询一次（可调整）
 
         # 模板路径字典
+        self.last_results: List[Dict[str, Any]] = []
+        self.last_chosen_index: Optional[int] = None
+        self.last_mode = self.MODE_NONE
+
         template_paths = {
             # ===== 技能选择界面 =====
 
@@ -416,11 +420,16 @@ class InGameOptionSelector:
             return False
 
         mode = self.detect_mode(scene_bgr)
+        self.last_mode = mode
         if mode != self.MODE_3:
+            self.last_results = []
+            self.last_chosen_index = None
             return False
 
         results = self.classify_cards(scene_bgr, rois=self.ROIS_3 or self.CARD_ROIS_3)
         chosen_index = self.choose_card_index(results)
+        self.last_results = results
+        self.last_chosen_index = chosen_index
         if chosen_index is None:
             return False
 

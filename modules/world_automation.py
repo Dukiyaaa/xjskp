@@ -16,6 +16,10 @@ from ctypes import windll
 import random
 import re
 from template_matcher import *
+try:
+    from in_game_option_selector import InGameOptionSelector
+except ImportError:
+    from .in_game_option_selector import InGameOptionSelector
 
 from pathlib import Path
 '''def resource_path(rel_path: str) -> str:
@@ -43,6 +47,9 @@ class WorldAutomation:
         self.world_counts = {f"world_{i + 1}": 0 for i in range(20)}
         self.world_counts["world_none"] = 0  # 初始化 21 个环球救援任务的计数器
         self.world_counts_cb = None
+
+        # 给自己用还是给别人用
+        self.use_tmp_world_diff_templates = True
         # 模板路径字典，存储多个模板路径
         template_paths = {
             # 主页：开始游戏
@@ -78,6 +85,27 @@ class WorldAutomation:
             "world_diff_18": resource_path(r"images\template\world_diff_18.png"),
             "world_diff_19": resource_path(r"images\template\world_diff_19.png"),
             "world_diff_20": resource_path(r"images\template\world_diff_20.png"),
+
+            "world_diff_1_tmp": resource_path(r"images\template\world_diff_1_tmp.png"),
+            "world_diff_2_tmp": resource_path(r"images\template\world_diff_2_tmp.png"),
+            "world_diff_3_tmp": resource_path(r"images\template\world_diff_3_tmp.png"),
+            "world_diff_4_tmp": resource_path(r"images\template\world_diff_4_tmp.png"),
+            "world_diff_5_tmp": resource_path(r"images\template\world_diff_5_tmp.png"),
+            "world_diff_6_tmp": resource_path(r"images\template\world_diff_6_tmp.png"),
+            "world_diff_7_tmp": resource_path(r"images\template\world_diff_7_tmp.png"),
+            "world_diff_8_tmp": resource_path(r"images\template\world_diff_8_tmp.png"),
+            "world_diff_9_tmp": resource_path(r"images\template\world_diff_9_tmp.png"),
+            "world_diff_10_tmp": resource_path(r"images\template\world_diff_10_tmp.png"),
+            "world_diff_11_tmp": resource_path(r"images\template\world_diff_11_tmp.png"),
+            "world_diff_12_tmp": resource_path(r"images\template\world_diff_12_tmp.png"),
+            "world_diff_13_tmp": resource_path(r"images\template\world_diff_13_tmp.png"),
+            "world_diff_14_tmp": resource_path(r"images\template\world_diff_14_tmp.png"),
+            "world_diff_15_tmp": resource_path(r"images\template\world_diff_15_tmp.png"),
+            "world_diff_16_tmp": resource_path(r"images\template\world_diff_16_tmp.png"),
+            "world_diff_17_tmp": resource_path(r"images\template\world_diff_17_tmp.png"),
+            "world_diff_18_tmp": resource_path(r"images\template\world_diff_18_tmp.png"),
+            "world_diff_19_tmp": resource_path(r"images\template\world_diff_19_tmp.png"),
+            "world_diff_20_tmp": resource_path(r"images\template\world_diff_20_tmp.png"),
             # "recruit_button": resource_path(r"images\template\recruit_button.png"),
             "game_has_started": resource_path(r"images\template\game_has_started.png"),
             "master_left": resource_path(r"images\template\master_left.png"),
@@ -223,6 +251,7 @@ class WorldAutomation:
             "roi_game_over_return": (348, 1292, 442, 1337),
 
             "team_world_text": (400, 188, 644, 260),
+            "team_world_text_tmp": (150, 188, 644, 260),
             "start_game_text": (288, 1186, 492, 1242),
             "team_leave_text": (645, 1188, 698, 1222),
             "in_game_diff_text": (400, 103, 516, 148),
@@ -272,6 +301,11 @@ class WorldAutomation:
         self.invite_only = False
         # 战斗时点击
         self.fight_cnt = 0
+        self.skill_priority = list(InGameOptionSelector.DEFAULT_SKILL_PRIORITY)
+        self.option_selector = InGameOptionSelector(
+            template_matcher=None,
+            skill_priority=self.skill_priority,
+        )
         if self.HWND == 0:
             raise RuntimeError(f"未找到窗口：{window_name}（FindWindow 失败）")
         else:
@@ -510,6 +544,12 @@ class WorldAutomation:
         self.current_page_cb = current_page_cb  # 当前所处页面的回调
         self.world_counts_cb = world_counts_cb  # 环球救援 dict
 
+    def set_skill_priority(self, priority):
+        if not priority:
+            return
+        self.skill_priority = list(priority)
+        self.option_selector.skill_priority = list(priority)
+
     def start(self, expect_diff: int = None, invite_only: bool = False,
           log_cb=None, counter_cb=None, current_page_cb=None, world_counts_cb=None):
         """
@@ -717,7 +757,12 @@ class WorldAutomation:
         2. 模板匹配时，若某个 score > 0.99，直接返回
         3. 若都没有超过 0.99，则返回最大 score 对应的环数
         """
-        roi = self.ROI["team_world_text"]
+        use_tmp_templates = getattr(self, "use_tmp_world_diff_templates", False)
+        roi_name = "team_world_text_tmp" if use_tmp_templates else "team_world_text"
+        template_suffix = "_tmp" if use_tmp_templates else ""
+        fast_return_score = None if use_tmp_templates else 0.99
+
+        roi = self.ROI[roi_name]
         x, y, w, h = roi
         roi_img = scene_bgr[y:y + h, x:x + w]
 
@@ -725,7 +770,7 @@ class WorldAutomation:
         ret = None
 
         for i in range(20):
-            template_name = f"world_diff_{i + 1}"
+            template_name = f"world_diff_{i + 1}{template_suffix}"
 
             found, score, top_left, tpl_hw = self.template_matcher.match_template(
                 roi_img,
@@ -734,7 +779,7 @@ class WorldAutomation:
             )
 
             if found:
-                if score > 0.99:
+                if fast_return_score is not None and score > fast_return_score:
                     self._log(f"get_world_diff: {template_name} get high score, score={score}")
                     return i + 1
 
@@ -1557,6 +1602,14 @@ class WorldAutomation:
 
         # -------- 情况2：战斗仍在进行中 --------
         if getattr(self, "mid_entry_click_enabled", True):
+            try:
+                if self.option_selector.step(scene_bgr, self.click_at_without_hover):
+                    self._log("[SKILL] 智能选词条已点击")
+                    time.sleep(0.8)
+                    return
+            except Exception as exc:
+                self._log(f"[SKILL][ERROR] 智能选词条失败: {exc}")
+
             # 循环点中间词条、先锋技能、机甲技能
             # 点中间的词条
             self.click_at_without_hover(*self.PT["skill_center"])

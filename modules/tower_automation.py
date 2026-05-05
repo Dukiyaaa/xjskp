@@ -14,6 +14,10 @@ import win32gui
 import win32ui
 
 from template_matcher import TemplateMatcher
+try:
+    from in_game_option_selector import InGameOptionSelector
+except ImportError:
+    from .in_game_option_selector import InGameOptionSelector
 
 
 def resource_path(rel_path: str) -> str:
@@ -77,6 +81,11 @@ class TowerAutomation:
         self._min_click_interval = 0.025
 
         self.skill_select_init = False
+        self.skill_priority = list(InGameOptionSelector.DEFAULT_SKILL_PRIORITY)
+        self.option_selector = InGameOptionSelector(
+            template_matcher=None,
+            skill_priority=self.skill_priority,
+        )
 
         self.HWND = win32gui.FindWindow(None, window_name)
         if self.HWND == 0:
@@ -114,6 +123,12 @@ class TowerAutomation:
     def set_callbacks(self, log_cb=None, current_page_cb=None):
         self.log_cb = log_cb
         self.current_page_cb = current_page_cb
+
+    def set_skill_priority(self, priority):
+        if not priority:
+            return
+        self.skill_priority = list(priority)
+        self.option_selector.skill_priority = list(priority)
 
     def start(self, log_cb=None, current_page_cb=None):
         if self.worker_thread is not None and self.worker_thread.is_alive():
@@ -409,11 +424,11 @@ class TowerAutomation:
 
         # 如果由于view1没有选择自动选择技能，则需要自动退出
         # 自动选技能-第一版
-        self.auto_select_skill()
+        self.auto_select_skill(scene_bgr)
         time.sleep(2)
         # self._log("[STATE] VIEW=2 下未识别到任何按钮")
 
-    def auto_select_skill(self):
+    def auto_select_skill(self, scene_bgr=None):
         if self.skill_select_init == False:
             self.skill_select_init = True
             for i in range(5):
@@ -426,6 +441,15 @@ class TowerAutomation:
                 time.sleep(0.5)
             
         # 之后循环点击中间技能，左右先锋技能，机甲
+        scene_bgr = self.bkgnd_full_window_screenshot()
+        if scene_bgr is not None:
+            try:
+                if self.option_selector.step(scene_bgr, self.click_at_without_hover):
+                    self._log("[SKILL] 智能选词条已点击")
+                    return
+            except Exception as exc:
+                self._log(f"[SKILL][ERROR] 智能选词条失败: {exc}")
+
         self.click_at_without_hover(391, 714)
         time.sleep(2)
         self.click_at_without_hover(95, 1178)
