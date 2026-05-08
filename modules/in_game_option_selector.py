@@ -29,6 +29,10 @@ class InGameOptionSelector:
     MODE_3 = 3      # 三选一：点一次即可
     MODE_4 = 4      # 四选二：选两次再点“确定”
 
+    SELECT_SKILL_THRESHOLD = 0.85
+    SELECT_SKILL_ROI = (300, 385, 500, 466)
+    AUTO_RANDOM_SELECT_ROI = (183, 1202, 567, 1308)
+
     CARD_ROIS_3 = [
         (5, 476, 249, 975),
         (267, 476, 509, 975),
@@ -177,11 +181,17 @@ class InGameOptionSelector:
         self.last_results: List[Dict[str, Any]] = []
         self.last_chosen_index: Optional[int] = None
         self.last_mode = self.MODE_NONE
+        self.last_trigger_scores: Dict[str, float] = {}
+        self._last_debug_log_ts = 0.0
+        self._debug_log_interval = 1.0
+        self._trigger_miss_debug_floor = 0.60
 
         template_paths = {
             # ===== 技能选择界面 =====
 
             # 4选2：确定按钮
+            "select_skill": resource_path(r"images\template\select_skill.png"),
+            "auto_random_select": resource_path(r"images\template\auto_random_select.png"),
             "skill_confirm": resource_path(r"images\template\skill_confirm.png"),
 
             # 技能名称模板（只截标题条中间）
@@ -193,10 +203,24 @@ class InGameOptionSelector:
         }
 
         self.template_paths = template_paths
-        self.template_matcher = template_matcher
+        self.template_matcher = template_matcher or TemplateMatcher(
+            {
+                "select_skill": template_paths["select_skill"],
+                "auto_random_select": template_paths["auto_random_select"],
+            }
+        )
+        missing_trigger_templates = {
+            name: template_paths[name]
+            for name in ("select_skill", "auto_random_select")
+            if name not in self.template_matcher.templates
+        }
+        if missing_trigger_templates:
+            self.template_matcher.load_templates(missing_trigger_templates)
 
         # --- 关键模板名（先占位：后续你往 template_paths 里加对应图片） ---
         # 4选2：底部“0/2确定”按钮
+        self.TPL_SELECT_SKILL = "select_skill"
+        self.TPL_AUTO_RANDOM_SELECT = "auto_random_select"
         self.TPL_CONFIRM_BTN = "skill_confirm"
         # 选择界面锚点（例如 “选择技能”文字/背景圆环）——可选
         self.TPL_PICK_ANCHOR = None
@@ -351,16 +375,69 @@ class InGameOptionSelector:
           - MODE_NONE：不在选择界面
         先占位：下一步实现
         """
-        rois_4 = self.ROIS_4
-        rois_3 = self.ROIS_3 or self.CARD_ROIS_3
-
-        if rois_4 and self._count_card_like_rois(scene_bgr, rois_4) >= 4:
-            return self.MODE_4
-
-        if self._count_card_like_rois(scene_bgr, rois_3) >= 3:
+        select_found, select_score, _, _ = self.template_matcher.match_template_in_roi(
+            scene_bgr,
+            self.TPL_SELECT_SKILL,
+            self.SELECT_SKILL_ROI,
+            threshold=self.SELECT_SKILL_THRESHOLD,
+        )
+        auto_found, auto_score, _, _ = self.template_matcher.match_template_in_roi(
+            scene_bgr,
+            self.TPL_AUTO_RANDOM_SELECT,
+            self.AUTO_RANDOM_SELECT_ROI,
+            threshold=self.SELECT_SKILL_THRESHOLD,
+        )
+        self.last_trigger_scores = {
+            self.TPL_SELECT_SKILL: float(select_score),
+            self.TPL_AUTO_RANDOM_SELECT: float(auto_score),
+        }
+        if select_found or auto_found:
             return self.MODE_3
 
         return self.MODE_NONE
+
+    def _debug_card_results(self, results: List[Dict[str, Any]]) -> str:
+        trigger = " ".join(
+            f"{name}={score:.3f}"
+            for name, score in self.last_trigger_scores.items()
+        )
+        cards = []
+        for result in results:
+            card_no = result.get("index", 0) + 1
+            category = result.get("category") or "-"
+            best_category = result.get("best_category") or "-"
+            best_template = result.get("best_template") or "-"
+            score = float(result.get("score") or 0.0)
+            cards.append(
+                f"card{card_no}: category={category} "
+                f"best={best_category}/{best_template} score={score:.3f}"
+            )
+        return f"[SKILL][DEBUG] trigger {trigger}; " + "; ".join(cards)
+
+    def _log_skill_debug(self, results: List[Dict[str, Any]]) -> None:
+        now = time.time()
+        if now - self._last_debug_log_ts < self._debug_log_interval:
+            return
+        self._last_debug_log_ts = now
+        self._log(self._debug_card_results(results))
+
+    def _log_trigger_miss_debug(self, scene_bgr: np.ndarray) -> None:
+        scores = list(self.last_trigger_scores.values())
+        if not scores or max(scores) < self._trigger_miss_debug_floor:
+            return
+        now = time.time()
+        if now - self._last_debug_log_ts < self._debug_log_interval:
+            return
+        self._last_debug_log_ts = now
+        h, w = scene_bgr.shape[:2]
+        trigger = " ".join(
+            f"{name}={score:.3f}"
+            for name, score in self.last_trigger_scores.items()
+        )
+        self._log(
+            f"[SKILL][DEBUG] trigger missed {trigger}; "
+            f"threshold={self.SELECT_SKILL_THRESHOLD:.2f}; scene={w}x{h}"
+        )
 
     def card_roi_stats(self, scene_bgr: np.ndarray, roi: Tuple[int, int, int, int]) -> Dict[str, Any]:
         import cv2 as cv
@@ -406,7 +483,12 @@ class InGameOptionSelector:
         y2 = max(0, min(y2, h))
         return x1, y1, x2, y2
 
-    def step(self, scene_bgr: np.ndarray, click_fn: Callable[[int, int], None]) -> bool:
+    def step(
+        self,
+        scene_bgr: np.ndarray,
+        click_fn: Callable[[int, int], None],
+        refresh_scene_fn: Optional[Callable[[], np.ndarray]] = None,
+    ) -> bool:
         """
         单步执行：
         - 由外部循环低频调用（例如每 200~500ms）
@@ -424,13 +506,21 @@ class InGameOptionSelector:
         if mode != self.MODE_3:
             self.last_results = []
             self.last_chosen_index = None
+            # self._log_trigger_miss_debug(scene_bgr)
             return False
+
+        time.sleep(1.0)
+        if refresh_scene_fn is not None:
+            refreshed_scene = refresh_scene_fn()
+            if refreshed_scene is not None:
+                scene_bgr = refreshed_scene
 
         results = self.classify_cards(scene_bgr, rois=self.ROIS_3 or self.CARD_ROIS_3)
         chosen_index = self.choose_card_index(results)
         self.last_results = results
         self.last_chosen_index = chosen_index
         if chosen_index is None:
+            # self._log_skill_debug(results)
             return False
 
         x, y = self.CLICK_POINTS_3[chosen_index]

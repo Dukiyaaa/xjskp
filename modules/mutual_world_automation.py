@@ -178,6 +178,7 @@ class MutualWorldAutomation:
 
     def set_callbacks(self, log_cb=None, current_page_cb=None):
         self.log_cb = log_cb
+        # self.option_selector.set_callbacks(log_cb=self._log)
         self.current_page_cb = current_page_cb
 
     def set_friend_invite_point(self, point: Optional[Tuple[int, int]]):
@@ -609,7 +610,11 @@ class MutualWorldAutomation:
             return
 
         try:
-            if self.option_selector.step(scene_bgr, self.click_at_without_hover):
+            if self.option_selector.step(
+                scene_bgr,
+                self.click_at_without_hover,
+                refresh_scene_fn=self.bkgnd_full_window_screenshot,
+            ):
                 self._log(
                     format_skill_choice_log(
                         self.option_selector.last_results,
@@ -641,6 +646,19 @@ class MutualWorldAutomation:
 
         if self.is_team_page(feats):
             self._emit_page("team")
+            invite_elapsed = now - self._last_invite_ts if self._last_invite_ts else None
+            invite_elapsed_text = "未邀请" if invite_elapsed is None else f"{invite_elapsed:.1f}s"
+            self._log(
+                "[DEBUG] 组队页识别："
+                f"master_left={feats.get('master_left')} "
+                f"start_game={feats.get('start_game')} "
+                f"invite={feats.get('invite')} "
+                f"team_exit={feats.get('team_exit')} "
+                f"invite_pending={self._invite_pending} "
+                f"invite_elapsed={invite_elapsed_text} "
+                f"start_delay={self.start_after_invite_delay:.1f}s "
+                f"retry_interval={self.invite_retry_interval:.1f}s"
+            )
             if not feats.get("master_left") and now - self._last_invite_ts >= self.start_after_invite_delay:
                 self._log("队友已入队，点击开始游戏")
                 self._safe_click(self.PT["ticket_start_game_after_friend_join"], "start_game", sleep_after=2.0)

@@ -69,8 +69,8 @@ class WorldAutomation:
         self.world_counts["world_none"] = 0  # 初始化 21 个环球救援任务的计数器
         self.world_counts_cb = None
 
-        # 给自己用还是给别人用
-        self.use_tmp_world_diff_templates = False
+        # 给自己用还是给别人用 True:给别人用
+        self.use_tmp_world_diff_templates = True
         # 模板路径字典，存储多个模板路径
         template_paths = {
             # 主页：开始游戏
@@ -565,6 +565,8 @@ class WorldAutomation:
         self.counter_cb = counter_cb  # 完成局数 int
         self.current_page_cb = current_page_cb  # 当前所处页面的回调
         self.world_counts_cb = world_counts_cb  # 环球救援 dict
+
+        # self.option_selector.set_callbacks(log_cb=self._log)
 
     def set_skill_priority(self, priority):
         if not priority:
@@ -1625,7 +1627,11 @@ class WorldAutomation:
         # -------- 情况2：战斗仍在进行中 --------
         if getattr(self, "mid_entry_click_enabled", True):
             try:
-                if self.option_selector.step(scene_bgr, self.click_at_without_hover):
+                if self.option_selector.step(
+                    scene_bgr,
+                    self.click_at_without_hover,
+                    refresh_scene_fn=self.bkgnd_full_window_screenshot,
+                ):
                     self._log(
                         format_skill_choice_log(
                             self.option_selector.last_results,

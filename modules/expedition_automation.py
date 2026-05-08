@@ -14,6 +14,28 @@ import win32gui
 import win32ui
 
 from template_matcher import TemplateMatcher
+from in_game_option_selector import InGameOptionSelector
+
+
+def format_skill_choice_log(results, chosen_index) -> str:
+    labels = InGameOptionSelector.SKILL_CATEGORY_LABELS
+    parts = []
+    for result in results:
+        card_no = result.get("index", 0) + 1
+        category = result.get("category")
+        label = labels.get(category, category) if category else "unknown"
+        score = result.get("score", 0.0)
+        parts.append(f"card{card_no}:{label}({score:.2f})")
+
+    if chosen_index is None:
+        chosen = "none"
+    else:
+        chosen_result = results[chosen_index]
+        category = chosen_result.get("category")
+        label = labels.get(category, category) if category else "unknown"
+        chosen = f"card{chosen_index + 1}:{label}"
+
+    return f"[SKILL] result: {' | '.join(parts)}; clicked: {chosen}"
 
 
 def resource_path(rel_path: str) -> str:
@@ -45,6 +67,8 @@ class ExpeditionAutomation:
             raise ValueError("role 只能是 'ticket' 或 'fighter'")
 
         self.role = role
+        self.smart_option_enabled = False
+        self.skill_priority = list(InGameOptionSelector.DEFAULT_SKILL_PRIORITY)
 
         template_paths = {
             "expedition_start_game": resource_path(r"images\template\expedition_start_game.png"),
@@ -53,6 +77,10 @@ class ExpeditionAutomation:
 
         self.template_paths = template_paths
         self.template_matcher = TemplateMatcher(template_paths)
+        self.option_selector = InGameOptionSelector(
+            template_matcher=None,
+            skill_priority=self.skill_priority,
+        )
 
         self.run_event = threading.Event()
         self.worker_thread = None
@@ -69,6 +97,7 @@ class ExpeditionAutomation:
 
         # 当前远征自动化只有一个页面
         self.VIEW = 0
+        self._battle_started_ts = None
 
         # 底部按钮区域：包含“开始游戏”和“准备”
         self.ROI = {
@@ -125,6 +154,12 @@ class ExpeditionAutomation:
         self.log_cb = log_cb
         self.current_page_cb = current_page_cb
 
+    def set_skill_priority(self, priority):
+        if not priority:
+            return
+        self.skill_priority = list(priority)
+        self.option_selector.skill_priority = list(priority)
+
     def start(self, log_cb=None, current_page_cb=None):
         if self.worker_thread is not None and self.worker_thread.is_alive():
             self._log("[WARN] ExpeditionAutomation 已在运行中，忽略重复 start()")
@@ -135,6 +170,8 @@ class ExpeditionAutomation:
 
         self.run_event.set()
         self.VIEW = 0
+        self._battle_started_ts = None
+        self.option_selector.reset_round()
 
         if self.role == "ticket":
             self._log("[INFO] 启动远征自动化，当前身份：出票位")
@@ -331,6 +368,8 @@ class ExpeditionAutomation:
                 x, y = feats["start_game"]
                 self.click_at_without_hover(x, y)
                 time.sleep(1.0)
+                self.set_view(1)
+                self._battle_started_ts = None
                 return
 
             self._log("[STATE] VIEW=0 出票位：未检测到开始游戏按钮")
@@ -343,16 +382,60 @@ class ExpeditionAutomation:
                 x, y = feats["ready"]
                 self.click_at_without_hover(x, y)
                 time.sleep(1.0)
+                self.set_view(1)
+                self._battle_started_ts = None
+                self._log("[STATE] VIEW=1 fighter: ready clicked, waiting for battle")
                 return
 
             self._log("[STATE] VIEW=0 打手位：未检测到准备按钮")
             time.sleep(0.5)
             return
 
+    def handle_view1(self):
+        scene_bgr = self.bkgnd_full_window_screenshot()
+        feats = self.collect_view0_features(scene_bgr)
+
+        room_button = feats["start_game"] if self.role == "ticket" else None
+        if room_button:
+            self._log("[STATE] VIEW=1 room button detected, reset to VIEW=0")
+            self._battle_started_ts = None
+            self.option_selector.reset_round()
+            self.set_view(0)
+            time.sleep(0.5)
+            return
+
+        if self._battle_started_ts is None:
+            self._battle_started_ts = time.time()
+            self.option_selector.reset_round()
+            self._log(
+                "[STATE] VIEW=1 battle monitor started; "
+                f"smart option={'enabled' if self.smart_option_enabled else 'disabled'}"
+            )
+
+        if self.smart_option_enabled:
+            try:
+                if self.option_selector.step(
+                    scene_bgr,
+                    self.click_at_without_hover,
+                    refresh_scene_fn=self.bkgnd_full_window_screenshot,
+                ):
+                    self._log(
+                        format_skill_choice_log(
+                            self.option_selector.last_results,
+                            self.option_selector.last_chosen_index,
+                        )
+                    )
+            except Exception as exc:
+                self._log(f"[SKILL][ERROR] smart option failed: {exc}")
+
+        time.sleep(0.5)
+
     def word_click(self):
         while self.run_event.is_set():
             if self.VIEW == 0:
                 self.handle_view0()
+            elif self.VIEW == 1:
+                self.handle_view1()
             else:
                 self._log(f"[WARN] 未定义的 VIEW={self.VIEW}，重置为 0")
                 self.set_view(0)

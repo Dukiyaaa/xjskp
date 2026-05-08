@@ -122,6 +122,7 @@ class TowerAutomation:
 
     def set_callbacks(self, log_cb=None, current_page_cb=None):
         self.log_cb = log_cb
+        # self.option_selector.set_callbacks(log_cb=self._log)
         self.current_page_cb = current_page_cb
 
     def set_skill_priority(self, priority):
@@ -444,7 +445,11 @@ class TowerAutomation:
         scene_bgr = self.bkgnd_full_window_screenshot()
         if scene_bgr is not None:
             try:
-                if self.option_selector.step(scene_bgr, self.click_at_without_hover):
+                if self.option_selector.step(
+                    scene_bgr,
+                    self.click_at_without_hover,
+                    refresh_scene_fn=self.bkgnd_full_window_screenshot,
+                ):
                     self._log("[SKILL] 智能选词条已点击")
                     return
             except Exception as exc:

@@ -420,8 +420,15 @@ class AppGUI:
         )
         cmb_role.grid(row=1, column=1, sticky="w", pady=(0, 6))
 
+        self.var_expedition_smart_option = tk.BooleanVar(value=True)
+        ttk.Checkbutton(
+            grp,
+            text="\u6218\u6597\u4e2d\u667a\u80fd\u9009\u8bcd\u6761",
+            variable=self.var_expedition_smart_option
+        ).grid(row=2, column=0, columnspan=2, sticky="w", pady=(4, 0))
+
         btn_row = ttk.Frame(grp)
-        btn_row.grid(row=2, column=0, columnspan=2, sticky="we", pady=(6, 0))
+        btn_row.grid(row=3, column=0, columnspan=2, sticky="we", pady=(6, 0))
         btn_row.columnconfigure(0, weight=1)
         btn_row.columnconfigure(1, weight=1)
 
@@ -1713,6 +1720,8 @@ class AppGUI:
         else:
             role = "fighter"
 
+        smart_option_enabled = self.var_expedition_smart_option.get()
+
         if self.expedition_automation is None:
             try:
                 self.expedition_automation = ExpeditionAutomation(
@@ -1723,6 +1732,7 @@ class AppGUI:
                 self.expedition_automation.set_callbacks(
                     log_cb=self.log_cb
                 )
+                self._apply_skill_priority_to_module(self.expedition_automation)
                 self._push_log(
                     "INFO",
                     f"[GUI] 已初始化 ExpeditionAutomation(window_name='{window_name}', role='{role}')"
@@ -1736,6 +1746,9 @@ class AppGUI:
         else:
             # 允许不重建实例，直接切换出票位/打手位
             self.expedition_automation.role = role
+            self._apply_skill_priority_to_module(self.expedition_automation)
+
+        self.expedition_automation.smart_option_enabled = smart_option_enabled
 
         try:
             self.expedition_automation.start(
