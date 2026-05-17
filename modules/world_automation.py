@@ -63,14 +63,15 @@ def format_skill_choice_log(results, chosen_index) -> str:
 
 
 class WorldAutomation:
-    def __init__(self, window_name="向僵尸开炮", auto_resize_window=False):
+    def __init__(self, window_name="向僵尸开炮", auto_resize_window=False, battle_auto_exit_minutes=0.0):
         # 用于记录每个“环球救援”任务的计数器
         self.world_counts = {f"world_{i + 1}": 0 for i in range(20)}
         self.world_counts["world_none"] = 0  # 初始化 21 个环球救援任务的计数器
         self.world_counts_cb = None
 
         # 给自己用还是给别人用 True:给别人用
-        self.use_tmp_world_diff_templates = True
+        self.use_tmp_world_diff_templates = False
+        # self.use_tmp_world_diff_templates = True
         # 模板路径字典，存储多个模板路径
         template_paths = {
             # 主页：开始游戏
@@ -247,6 +248,8 @@ class WorldAutomation:
             "skill_left": (95, 1184),
             "skill_right": (715, 1184),
             "mecha_skill": (711, 1028),
+            "battle_auto_exit_menu": (69, 137),
+            "battle_auto_exit_confirm": (209, 1346),
 
             # 受邀请模式
             "team_invitation_refuse": (582, 445),
@@ -308,6 +311,8 @@ class WorldAutomation:
         self._run_idx = 0  # 第几把（从 0 计起，开局时 +1）
         self._game_start_ts = None  # 本局开始时间戳
         self._game_diff = None  # 本局难度（进入战斗前记录）
+        self.battle_auto_exit_minutes = max(0.0, float(battle_auto_exit_minutes or 0.0))
+        self._battle_auto_exit_done = False
         # 获取窗口句柄
         self.HWND = win32gui.FindWindow(None, window_name)  # 获取标题为“向僵尸开炮”的窗口的句柄
         self.TEMPLATE_IMGS = {}
@@ -501,6 +506,7 @@ class WorldAutomation:
         self._run_idx += 1
         self._game_start_ts = time.time()
         self._game_diff = diff
+        self._battle_auto_exit_done = False
         self._log(f"[GAME] 第{self._run_idx}把开始 | 难度={diff} | 可在左侧按钮勾选是否自动选择中间词条")
 
     def _game_end(self):
@@ -517,6 +523,7 @@ class WorldAutomation:
         # 清空本局数据
         self._game_start_ts = None
         self._game_diff = None
+        self._battle_auto_exit_done = False
 
     def reset_counter(self):
         self.test_cnt = 0
@@ -574,6 +581,9 @@ class WorldAutomation:
         self.skill_priority = list(priority)
         self.option_selector.skill_priority = list(priority)
 
+    def set_battle_auto_exit_minutes(self, minutes: float):
+        self.battle_auto_exit_minutes = max(0.0, float(minutes or 0.0))
+
     def start(self, expect_diff: int = None, invite_only: bool = False,
           log_cb=None, counter_cb=None, current_page_cb=None, world_counts_cb=None):
         """
@@ -604,6 +614,9 @@ class WorldAutomation:
         self.VIEW = 0
 
         self.RETRY = 0
+        self._battle_auto_exit_done = False
+        self._game_start_ts = None
+        self._game_diff = None
         # 计数是否要重置看你需求；这里先不动 test_cnt（你可以自己手动清零）
         # self.test_cnt = 0
 
@@ -1019,6 +1032,10 @@ class WorldAutomation:
 
         feats = self.collect_scan_features(scene_bgr)
 
+        if self.invite_only and self.is_team_invitation_page_by_feats(feats):
+            self._log('[STATE] scan result: team invitation page => invited VIEW=1')
+            return 1
+
         if self.is_battle_page_by_feats(feats):
             self._log('[STATE]当前页面为战斗页面')
             return 4
@@ -1182,6 +1199,8 @@ class WorldAutomation:
 
             "master_left": self.find_button(scene_bgr, "master_left", roi="roi_master_left"),
             "team_exit": self.find_button(scene_bgr, "team_exit", roi="roi_team_exit"),
+            "team_invitation": self.find_button(scene_bgr, "team_invitation"),
+            "team_invitation_accept_btn": self.find_button(scene_bgr, "team_invitation_accept_btn"),
 
             "game_has_started": self.find_button(scene_bgr, "game_has_started"),
             "chart": self.find_button(scene_bgr, "chart"),
@@ -1201,6 +1220,9 @@ class WorldAutomation:
 
     def is_team_page_by_feats(self, feats):
         return feats.get("master_left") is not None or feats.get("team_exit") is not None
+
+    def is_team_invitation_page_by_feats(self, feats):
+        return feats.get("team_invitation") is not None or feats.get("team_invitation_accept_btn") is not None
 
     def is_battle_page_by_feats(self, feats):
         return feats.get("game_has_started") is not None or feats.get("chart") is not None
@@ -1562,6 +1584,30 @@ class WorldAutomation:
         self._log("[STATE]等待房主开启游戏中")
         time.sleep(1)
 
+    def _battle_auto_exit_if_due(self) -> bool:
+        if self.battle_auto_exit_minutes <= 0:
+            return False
+        if self._game_start_ts is None:
+            self._game_begin(self.diff)
+        if self._battle_auto_exit_done:
+            return False
+
+        elapsed = time.time() - self._game_start_ts
+        limit_seconds = self.battle_auto_exit_minutes * 60.0
+        if elapsed < limit_seconds:
+            return False
+
+        self._battle_auto_exit_done = True
+        self._log(
+            f"[BATTLE] auto exit after {elapsed / 60.0:.1f}min "
+            f"(limit={self.battle_auto_exit_minutes:.1f}min)"
+        )
+        self.click_at_without_hover(*self.PT["battle_auto_exit_menu"])
+        time.sleep(0.8)
+        self.click_at_without_hover(*self.PT["battle_auto_exit_confirm"])
+        time.sleep(1.5)
+        return True
+
     def handle_view4(self):
         time.sleep(1.0)
         scene_bgr = self.bkgnd_full_window_screenshot()
@@ -1625,6 +1671,9 @@ class WorldAutomation:
             return
 
         # -------- 情况2：战斗仍在进行中 --------
+        if self._battle_auto_exit_if_due():
+            return
+
         if getattr(self, "mid_entry_click_enabled", True):
             try:
                 if self.option_selector.step(

@@ -82,6 +82,10 @@ class ExpeditionAutomation:
             "game_over_return": resource_path(r"images\template\game_over_return.png"),
             "game_has_started": resource_path(r"images\template\game_has_started.png"),
             "chart": resource_path(r"images\template\chart.png"),
+            "cancel": resource_path(r"images\template\cancel.png"),
+            "cancel_time_act": resource_path(r"images\template\cancel_time_act.png"),
+            "upgrade_coin": resource_path(r"images\template\upgrade_coin.png"),
+            "reconnect": resource_path(r"images\template\reconnect.png"),
         }
 
         self.template_paths = template_paths
@@ -106,6 +110,10 @@ class ExpeditionAutomation:
 
         # 当前远征自动化只有一个页面
         self.VIEW = 0
+        self.VIEW_UNKNOWN = -1
+        self.SCAN_INTERVAL = 600
+        self.SCAN_RETRY = 3
+        self.SCAN_RETRY_GAP = 2.0
         self._battle_started_ts = None
         self._last_ready_click_ts = 0.0
         self._cancel_ready_started_ts = None
@@ -420,6 +428,55 @@ class ExpeditionAutomation:
     def is_battle_page(self, battle_feats):
         return bool(battle_feats.get("game_has_started") or battle_feats.get("chart"))
 
+    def detect_ad_popup(self, scene_bgr):
+        for name in ("cancel", "cancel_time_act"):
+            pos = self.find_button(scene_bgr, name)
+            if pos is not None:
+                return {"is_ad": True, "close_name": name, "close_pos": pos}
+        return {"is_ad": False, "close_name": None, "close_pos": None}
+
+    def handle_ad_popup(self, scene_bgr, sleep_after=1.0) -> bool:
+        ad_info = self.detect_ad_popup(scene_bgr)
+        if not ad_info["is_ad"]:
+            return False
+        self._log(f"[STATE] ad/activity popup detected: {ad_info['close_name']}, close")
+        x, y = ad_info["close_pos"]
+        self.click_at_without_hover(x, y)
+        time.sleep(sleep_after)
+        return True
+
+    def detect_upgrade_popup(self, scene_bgr):
+        pos = self.find_button(scene_bgr, "upgrade_coin")
+        if pos is not None:
+            return {"is_upgrade": True, "close_name": "upgrade_coin", "close_pos": pos}
+        return {"is_upgrade": False, "close_name": None, "close_pos": None}
+
+    def handle_upgrade_popup(self, scene_bgr, sleep_after=1.0) -> bool:
+        upgrade_info = self.detect_upgrade_popup(scene_bgr)
+        if not upgrade_info["is_upgrade"]:
+            return False
+        self._log(f"[STATE] upgrade popup detected: {upgrade_info['close_name']}, close")
+        x, y = upgrade_info["close_pos"]
+        self.click_at_without_hover(x, y + 100)
+        time.sleep(sleep_after)
+        return True
+
+    def detect_reconnect_popup(self, scene_bgr):
+        pos = self.find_button(scene_bgr, "reconnect")
+        if pos is not None:
+            return {"is_reconnect": True, "close_name": "reconnect", "close_pos": pos}
+        return {"is_reconnect": False, "close_name": None, "close_pos": None}
+
+    def handle_reconnect_popup(self, scene_bgr, sleep_after=1.0) -> bool:
+        reconnect_info = self.detect_reconnect_popup(scene_bgr)
+        if not reconnect_info["is_reconnect"]:
+            return False
+        self._log(f"[STATE] reconnect popup detected: {reconnect_info['close_name']}, click")
+        x, y = reconnect_info["close_pos"]
+        self.click_at_without_hover(x, y)
+        time.sleep(sleep_after)
+        return True
+
     def collect_home_features(self, scene_bgr):
         return {
             "home_start_game": self.find_button(
@@ -450,6 +507,77 @@ class ExpeditionAutomation:
 
     def is_expedition_entry_page(self, entry_feats):
         return bool(entry_feats.get("expidition"))
+
+    def detect_view(self, scene_bgr):
+        self._log("[STATE] scheduled page scan")
+
+        if self.detect_ad_popup(scene_bgr)["is_ad"]:
+            self._log("[STATE] popup blocks page scan: ad/activity")
+            return self.VIEW_UNKNOWN
+        if self.detect_upgrade_popup(scene_bgr)["is_upgrade"]:
+            self._log("[STATE] popup blocks page scan: upgrade")
+            return self.VIEW_UNKNOWN
+        if self.detect_reconnect_popup(scene_bgr)["is_reconnect"]:
+            self._log("[STATE] popup blocks page scan: reconnect")
+            return self.VIEW_UNKNOWN
+
+        battle_feats = self.collect_battle_features(scene_bgr)
+        if (
+            self.is_battle_page(battle_feats)
+            or battle_feats["start_road"]
+            or battle_feats["game_over_return"]
+        ):
+            self._log("[STATE] scan result: battle/result page")
+            return 1
+
+        home_feats = self.collect_home_features(scene_bgr)
+        if self.is_home_page(home_feats):
+            self._log("[STATE] scan result: home page")
+            return 0
+
+        entry_feats = self.collect_expedition_entry_features(scene_bgr)
+        if self.is_expedition_entry_page(entry_feats):
+            self._log("[STATE] scan result: expedition entry page")
+            return 0
+
+        view0_feats = self.collect_view0_features(scene_bgr)
+        if (
+            view0_feats["ready"]
+            or view0_feats["cancel_ready"]
+            or view0_feats["start_game"]
+            or view0_feats["start_game_2"]
+        ):
+            self._log("[STATE] scan result: expedition team page")
+            return 0
+
+        self._log("[STATE] scan result: unknown")
+        return self.VIEW_UNKNOWN
+
+    def scan_view_with_retry(self):
+        for i in range(1, self.SCAN_RETRY + 1):
+            if not self.run_event.is_set():
+                return self.VIEW_UNKNOWN
+
+            try:
+                scene_bgr = self.bkgnd_full_window_screenshot()
+                if self.handle_ad_popup(scene_bgr, sleep_after=1.0):
+                    continue
+                if self.handle_upgrade_popup(scene_bgr, sleep_after=1.0):
+                    continue
+                if self.handle_reconnect_popup(scene_bgr, sleep_after=1.0):
+                    continue
+
+                v = self.detect_view(scene_bgr)
+                self._log(f"[SCAN] try {i}/{self.SCAN_RETRY} => {v}")
+                if v != self.VIEW_UNKNOWN:
+                    return v
+            except Exception as exc:
+                self._log(f"[SCAN_ERROR] try {i}/{self.SCAN_RETRY}: {exc}")
+
+            self._log(f"[SCAN] unknown page, retry in {self.SCAN_RETRY_GAP:.1f}s")
+            time.sleep(self.SCAN_RETRY_GAP)
+
+        return self.VIEW_UNKNOWN
 
     def click_expedition_challenge(self):
         self._log("[STATE] expedition entry detected, click challenge")
@@ -561,7 +689,8 @@ class ExpeditionAutomation:
             return
 
         if battle_feats["game_over_return"]:
-            self._log("[STATE] VIEW=1 battle ended: detected game_over_return, click return")
+            self._log("[STATE] VIEW=1 battle ended: detected game_over_return, wait 5s then click return")
+            time.sleep(5.0)
             x, y = battle_feats["game_over_return"]
             self.click_at_without_hover(x, y)
             self._battle_started_ts = None
@@ -639,7 +768,21 @@ class ExpeditionAutomation:
         time.sleep(0.5)
 
     def word_click(self):
+        next_scan_ts = time.monotonic() + self.SCAN_INTERVAL
         while self.run_event.is_set():
+            now = time.monotonic()
+            if now >= next_scan_ts:
+                try:
+                    v = self.scan_view_with_retry()
+                    if v != self.VIEW_UNKNOWN:
+                        self._log(f"[SCAN] success => set_view({v})")
+                        self.set_view(v)
+                    else:
+                        self._log("[SCAN] all retries failed, keep current VIEW")
+                except Exception as exc:
+                    self._log(f"[SCAN_ERROR] {exc}")
+                next_scan_ts = now + self.SCAN_INTERVAL
+
             if self.VIEW == 0:
                 self.handle_view0()
             elif self.VIEW == 1:

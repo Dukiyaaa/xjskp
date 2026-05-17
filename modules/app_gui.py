@@ -216,6 +216,12 @@ class AppGUI:
         ent_world_diff_threshold = ttk.Entry(param_row, textvariable=self.var_world_diff_threshold, width=8)
         ent_world_diff_threshold.grid(row=1, column=1, sticky="w", padx=(8, 24), pady=(6, 0))
 
+        ttk.Label(param_row, text="\u6218\u6597\u81ea\u52a8\u9000\u51fa(\u5206\u949f)").grid(row=2, column=0, sticky="w", pady=(6, 0))
+        self.var_world_battle_auto_exit_minutes = tk.StringVar(value="0")
+        ttk.Entry(param_row, textvariable=self.var_world_battle_auto_exit_minutes, width=8).grid(
+            row=2, column=1, sticky="w", padx=(8, 24), pady=(6, 0)
+        )
+
         # Buttons row
         btn_row = ttk.Frame(grp)
         btn_row.grid(row=2, column=0, columnspan=2, sticky="we", pady=(6, 0))
@@ -528,8 +534,14 @@ class AppGUI:
             variable=self.var_mutual_world_smart_option
         ).grid(row=4, column=0, columnspan=3, sticky="w", pady=(4, 0))
 
+        ttk.Label(grp, text="\u6218\u6597\u81ea\u52a8\u9000\u51fa(\u5206\u949f)").grid(row=5, column=0, sticky="w", pady=(8, 0))
+        self.var_mutual_world_battle_auto_exit_minutes = tk.StringVar(value="0")
+        ttk.Entry(grp, textvariable=self.var_mutual_world_battle_auto_exit_minutes, width=8).grid(
+            row=5, column=1, sticky="w", pady=(8, 0)
+        )
+
         btn_row = ttk.Frame(grp)
-        btn_row.grid(row=5, column=0, columnspan=3, sticky="we", pady=(6, 0))
+        btn_row.grid(row=6, column=0, columnspan=3, sticky="we", pady=(6, 0))
         btn_row.columnconfigure(0, weight=1)
         btn_row.columnconfigure(1, weight=1)
 
@@ -671,7 +683,7 @@ class AppGUI:
         cmb_task = ttk.Combobox(
             grp_add,
             textvariable=self.var_queue_task_type,
-            values=["抢环球", "爬塔", "体力广告"],
+            values=["抢环球", "爬塔", "自动远征", "体力广告"],
             state="readonly",
             width=18
         )
@@ -760,6 +772,17 @@ class AppGUI:
                 "task_type": "tower",
                 "name": "爬塔",
                 "params": {}
+            }
+
+        elif task_type == "自动远征":
+            role_text = self.var_expedition_role.get()
+            task = {
+                "task_type": "expedition",
+                "name": f"自动远征({role_text})",
+                "params": {
+                    "role_text": role_text,
+                    "smart_option_enabled": self.var_expedition_smart_option.get()
+                }
             }
 
         elif task_type == "体力广告":
@@ -1024,6 +1047,7 @@ class AppGUI:
 
         self.btn_start.configure(state="disabled")
         self.btn_tower_start.configure(state="disabled")
+        self.btn_expedition_start.configure(state="disabled")
         self.btn_ads_power_start.configure(state="disabled")
 
         self._append_queue_log("[QUEUE] 开始执行任务队列")
@@ -1048,6 +1072,12 @@ class AppGUI:
             self._append_queue_log(f"[QUEUE] 停止 TowerAutomation 时异常: {e}")
 
         try:
+            if self.expedition_automation is not None and self.expedition_automation.run_event.is_set():
+                self.expedition_automation.stop()
+        except Exception as e:
+            self._append_queue_log(f"[QUEUE] 停止 ExpeditionAutomation 时异常: {e}")
+
+        try:
             if self.ad_watcher is not None and self.ad_watcher.power_running:
                 self.ad_watcher.stop_power_ads()
         except Exception as e:
@@ -1066,6 +1096,7 @@ class AppGUI:
 
         self.btn_start.configure(state="normal")
         self.btn_tower_start.configure(state="normal")
+        self.btn_expedition_start.configure(state="normal")
         self.btn_ads_power_start.configure(state="normal")
 
         self._append_queue_log("[QUEUE] 已手动停止任务队列")
@@ -1094,10 +1125,12 @@ class AppGUI:
 
                 window_name = self.var_window_name.get().strip()
                 click_interval = float(self.var_click_interval.get().strip())
+                battle_auto_exit_minutes = float(self.var_world_battle_auto_exit_minutes.get().strip() or "0")
 
                 if self.automation is None:
                     self.automation = WorldAutomation(
                         window_name=window_name,
+                        battle_auto_exit_minutes=battle_auto_exit_minutes,
                         auto_resize_window=self._consume_resize_once_flag()
                     )
                     self.automation.set_callbacks(
@@ -1112,6 +1145,7 @@ class AppGUI:
 
                 self.automation.mid_entry_click_enabled = self.var_mid_entry_click.get()
                 self.automation._min_click_interval = click_interval
+                self.automation.set_battle_auto_exit_minutes(battle_auto_exit_minutes)
                 self.automation.start(
                     expect_diff=expect_diff,
                     invite_only=invite_only,
@@ -1150,6 +1184,38 @@ class AppGUI:
                 self.var_tower_running.set("运行中")
                 self.btn_tower_start.configure(state="disabled")
                 self.btn_tower_stop.configure(state="normal")
+
+            elif task_type == "expedition":
+                params = task.get("params", {})
+                role_text = params.get("role_text", self.var_expedition_role.get())
+                smart_option_enabled = params.get(
+                    "smart_option_enabled",
+                    self.var_expedition_smart_option.get()
+                )
+                role = "ticket" if role_text == "出票位" else "fighter"
+                window_name = self.var_expedition_window_name.get().strip()
+
+                if self.expedition_automation is None:
+                    self.expedition_automation = ExpeditionAutomation(
+                        window_name=window_name,
+                        role=role,
+                        auto_resize_window=self._consume_resize_once_flag()
+                    )
+                    self.expedition_automation.set_callbacks(log_cb=self.log_cb)
+                    self._apply_skill_priority_to_module(self.expedition_automation)
+                    self._push_log("INFO", f"[GUI] 已初始化 ExpeditionAutomation(window_name='{window_name}', role='{role}')")
+                else:
+                    self.expedition_automation.role = role
+                    self._apply_skill_priority_to_module(self.expedition_automation)
+
+                self.expedition_automation.smart_option_enabled = smart_option_enabled
+                self.expedition_automation.start(log_cb=self.log_cb)
+
+                self.var_expedition_running.set("运行中")
+                self.var_expedition_role_show.set(role_text)
+                self.btn_expedition_start.configure(state="disabled")
+                self.btn_expedition_stop.configure(state="normal")
+
             elif task_type == "ads_power":
                 params = task.get("params", {})
                 max_rounds = params.get("max_rounds", 30)
@@ -1171,7 +1237,7 @@ class AppGUI:
                 self._queue_start_next_task()
                 return
 
-            if task_type in ("world", "tower"):
+            if task_type in ("world", "tower", "expedition"):
                 self.queue_after_id = self.root.after(500, self._queue_check_current_task)
 
         except Exception as e:
@@ -1216,6 +1282,17 @@ class AppGUI:
                     self.btn_tower_start.configure(state="normal")
                     self.btn_tower_stop.configure(state="disabled")
 
+            elif task_type == "expedition":
+                alive = (
+                    self.expedition_automation is not None and
+                    self.expedition_automation.worker_thread is not None and
+                    self.expedition_automation.worker_thread.is_alive()
+                )
+                if not alive:
+                    self.var_expedition_running.set("未运行")
+                    self.btn_expedition_start.configure(state="normal")
+                    self.btn_expedition_stop.configure(state="disabled")
+
         except Exception as e:
             self._append_queue_log(f"[QUEUE] 检查任务状态异常: {e}")
             alive = False
@@ -1243,6 +1320,7 @@ class AppGUI:
 
         self.btn_start.configure(state="normal")
         self.btn_tower_start.configure(state="normal")
+        self.btn_expedition_start.configure(state="normal")
         self.btn_ads_power_start.configure(state="normal")
 
         self._append_queue_log(msg)
@@ -1421,6 +1499,14 @@ class AppGUI:
             messagebox.showwarning("\u63d0\u793a", "\u96be\u5ea6\u8bc6\u522b\u9608\u503c\u9700\u8981\u662f 0~1 \u4e4b\u95f4\u7684\u5c0f\u6570\uff0c\u4f8b\u5982 0.90")
             return
 
+        try:
+            battle_auto_exit_minutes = float(self.var_world_battle_auto_exit_minutes.get().strip() or "0")
+            if battle_auto_exit_minutes < 0:
+                raise ValueError
+        except Exception:
+            messagebox.showwarning("\u63d0\u793a", "\u6218\u6597\u81ea\u52a8\u9000\u51fa\u65f6\u95f4\u9700\u8981\u662f\u5927\u4e8e\u7b49\u4e8e 0 \u7684\u6570\u5b57\uff0c0 \u8868\u793a\u5173\u95ed")
+            return
+
         invite_only = self.var_invite_only.get()
 
         # Create module instance if needed
@@ -1428,6 +1514,7 @@ class AppGUI:
             try:
                 self.automation = WorldAutomation(
                     window_name=window_name,
+                    battle_auto_exit_minutes=battle_auto_exit_minutes,
                     auto_resize_window=self._consume_resize_once_flag()
                 )
                 # set callbacks once
@@ -1458,6 +1545,7 @@ class AppGUI:
             self.automation.mid_entry_click_enabled = self.var_mid_entry_click.get()
             self.automation._min_click_interval = click_interval
             self.automation.world_diff_match_threshold = world_diff_threshold
+            self.automation.set_battle_auto_exit_minutes(battle_auto_exit_minutes)
             self.automation.start(
                 expect_diff=expect_diff,
                 invite_only=invite_only,
@@ -1898,6 +1986,13 @@ class AppGUI:
             return
 
         smart_option_enabled = self.var_mutual_world_smart_option.get()
+        try:
+            battle_auto_exit_minutes = float(self.var_mutual_world_battle_auto_exit_minutes.get().strip() or "0")
+            if battle_auto_exit_minutes < 0:
+                raise ValueError
+        except Exception:
+            messagebox.showwarning("\u63d0\u793a", "\u6218\u6597\u81ea\u52a8\u9000\u51fa\u65f6\u95f4\u9700\u8981\u662f\u5927\u4e8e\u7b49\u4e8e 0 \u7684\u6570\u5b57\uff0c0 \u8868\u793a\u5173\u95ed")
+            return
 
         if self.mutual_world_automation is None:
             try:
@@ -1908,6 +2003,7 @@ class AppGUI:
                     friend_template_path=friend_template,
                     friend_match_threshold=threshold,
                     smart_option_enabled=smart_option_enabled,
+                    battle_auto_exit_minutes=battle_auto_exit_minutes,
                     auto_resize_window=self._consume_resize_once_flag()
                 )
                 self.mutual_world_automation.set_callbacks(
@@ -1927,6 +2023,7 @@ class AppGUI:
             self.mutual_world_automation.friend_name = friend_name
             self.mutual_world_automation.friend_match_threshold = threshold
             self.mutual_world_automation.smart_option_enabled = smart_option_enabled
+            self.mutual_world_automation.set_battle_auto_exit_minutes(battle_auto_exit_minutes)
             self.mutual_world_automation.set_friend_template_path(friend_template)
             self._apply_skill_priority_to_module(self.mutual_world_automation)
 

@@ -81,6 +81,8 @@ class MutualWorldAutomation:
         "friend_tab": (335, 1394),
         "invite_panel_close": (720, 277),
         "friend_row_invite_x": (590, 0),
+        "battle_auto_exit_menu": (69, 137),
+        "battle_auto_exit_confirm": (209, 1346),
     }
 
     ROI = {
@@ -109,6 +111,7 @@ class MutualWorldAutomation:
         friend_match_threshold: float = 0.85,
         skill_priority: Optional[List[str]] = None,
         smart_option_enabled: bool = False,
+        battle_auto_exit_minutes: float = 0.0,
         auto_resize_window: bool = False,
     ):
         self.window_name = window_name
@@ -119,6 +122,7 @@ class MutualWorldAutomation:
         self.friend_match_threshold = friend_match_threshold
         self.skill_priority = list(skill_priority or InGameOptionSelector.DEFAULT_SKILL_PRIORITY)
         self.smart_option_enabled = bool(smart_option_enabled)
+        self.battle_auto_exit_minutes = max(0.0, float(battle_auto_exit_minutes or 0.0))
 
         self.log_cb: Optional[Callable[[str], None]] = None
         self.current_page_cb: Optional[Callable[[str], None]] = None
@@ -152,6 +156,7 @@ class MutualWorldAutomation:
         self._last_action_ts = 0.0
         self._invite_pending = False
         self._battle_started_ts = None
+        self._battle_auto_exit_done = False
 
         self.invite_retry_interval = 8.0
         self.start_after_invite_delay = 4.0
@@ -193,6 +198,9 @@ class MutualWorldAutomation:
             return
         self.skill_priority = list(priority)
         self.option_selector.skill_priority = list(priority)
+
+    def set_battle_auto_exit_minutes(self, minutes: float):
+        self.battle_auto_exit_minutes = max(0.0, float(minutes or 0.0))
 
     def _load_friend_template(self) -> bool:
         path = (self.friend_template_path or "").strip()
@@ -237,6 +245,7 @@ class MutualWorldAutomation:
         self._last_action_ts = 0.0
         self._invite_pending = False
         self._battle_started_ts = None
+        self._battle_auto_exit_done = False
 
         self.worker_thread = threading.Thread(target=self._run_loop, daemon=True)
         self.worker_thread.start()
@@ -370,6 +379,7 @@ class MutualWorldAutomation:
         self._safe_click(self.PT["game_over_return"], "game_over_return", sleep_after=3.0)
         self._invite_pending = False
         self._battle_started_ts = None
+        self._battle_auto_exit_done = False
         return True
 
     def _invite_friend(self, feats):
@@ -596,14 +606,42 @@ class MutualWorldAutomation:
         self._safe_click(self.PT["leave_step1"], "leave_team", sleep_after=1.0)
         # self._safe_click(self.PT["leave_step2"], "confirm_leave_team", sleep_after=1.5)
         self._battle_started_ts = None
+        self._battle_auto_exit_done = False
         self._invite_pending = False
+
+    def _battle_auto_exit_if_due(self, now: Optional[float] = None) -> bool:
+        if self.battle_auto_exit_minutes <= 0 or self._battle_started_ts is None:
+            return False
+        if self._battle_auto_exit_done:
+            return False
+
+        now = now or time.time()
+        elapsed = now - self._battle_started_ts
+        limit_seconds = self.battle_auto_exit_minutes * 60.0
+        if elapsed < limit_seconds:
+            return False
+
+        self._battle_auto_exit_done = True
+        self._log(
+            f"[BATTLE] auto exit after {elapsed / 60.0:.1f}min "
+            f"(limit={self.battle_auto_exit_minutes:.1f}min)"
+        )
+        self._safe_click(self.PT["battle_auto_exit_menu"], "battle_auto_exit_menu", sleep_after=0.8)
+        time.sleep(0.5)
+        self._safe_click(self.PT["battle_auto_exit_confirm"], "battle_auto_exit_confirm", sleep_after=1.5)
+        return True
 
     def _handle_battle(self, scene_bgr, now: Optional[float] = None):
         self._emit_page("battle")
         if self._battle_started_ts is None:
             self._battle_started_ts = now or time.time()
+            self._battle_auto_exit_done = False
             self.option_selector.reset_round()
             self._log("[BATTLE] started")
+
+        if self._battle_auto_exit_if_due(now=now):
+            time.sleep(self.loop_interval)
+            return
 
         if not self.smart_option_enabled:
             time.sleep(self.loop_interval)
