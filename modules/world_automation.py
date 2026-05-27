@@ -1097,6 +1097,7 @@ class WorldAutomation:
     def collect_view0_features(self, scene_bgr):
         return {
             "main_chat": self.find_button(scene_bgr, "main_chat", roi="roi_main_chat"),
+            "main_chat_notice": self.find_button(scene_bgr, "main_chat_notice", roi="roi_main_chat"),
             "main_chat_army": self.find_button(scene_bgr, "main_chat_army", roi="roi_main_chat"),
             "resource": self.find_button(scene_bgr, "resource", roi="roi_resource"),
             "master_left": self.find_button(scene_bgr, "master_left", roi="roi_master_left"),
@@ -1115,7 +1116,9 @@ class WorldAutomation:
     
     def collect_view0_features_invited(self, scene_bgr):
         return {
-            "start_game": self.find_button(scene_bgr, "start_game", roi="roi_start_game"),
+            "main_chat": self.find_button(scene_bgr, "main_chat", roi="roi_main_chat"),
+            "main_chat_notice": self.find_button(scene_bgr, "main_chat_notice", roi="roi_main_chat"),
+            "main_chat_army": self.find_button(scene_bgr, "main_chat_army", roi="roi_main_chat"),
             "fight": self.find_button(scene_bgr, "fight", roi="roi_fight"),
             "copy_invitation": self.find_button(scene_bgr, "copy_invitation"),
             "team_invitation": self.find_button(scene_bgr, "team_invitation"),
@@ -1128,7 +1131,9 @@ class WorldAutomation:
         return {
             "chat_recruit": self.find_button(scene_bgr, "chat_recruit"),
             "cross_server": self.find_button(scene_bgr, "cross_server"),
-            "start_game": self.find_button(scene_bgr, "start_game", roi="roi_start_game"),
+            "main_chat": self.find_button(scene_bgr, "main_chat", roi="roi_main_chat"),
+            "main_chat_notice": self.find_button(scene_bgr, "main_chat_notice", roi="roi_main_chat"),
+            "main_chat_army": self.find_button(scene_bgr, "main_chat_army", roi="roi_main_chat"),
             "fight": self.find_button(scene_bgr, "fight", roi="roi_fight"),
             "game_has_started": self.find_button(scene_bgr, "game_has_started"),
             "game_over_return": self.find_button(scene_bgr, "game_over_return"),
@@ -1155,7 +1160,9 @@ class WorldAutomation:
         return {
             "team_exit": self.find_button(scene_bgr, "team_exit", roi="roi_team_exit"),
             "master_left": self.find_button(scene_bgr, "master_left", roi="roi_master_left"),
-            "start_game": self.find_button(scene_bgr, "start_game", roi="roi_start_game"),
+            "main_chat": self.find_button(scene_bgr, "main_chat", roi="roi_main_chat"),
+            "main_chat_notice": self.find_button(scene_bgr, "main_chat_notice", roi="roi_main_chat"),
+            "main_chat_army": self.find_button(scene_bgr, "main_chat_army", roi="roi_main_chat"),
             "fight": self.find_button(scene_bgr, "fight", roi="roi_fight"),
             "game_has_started": self.find_button(scene_bgr, "game_has_started"),
             "game_over_return": self.find_button(scene_bgr, "game_over_return"),
@@ -1166,7 +1173,9 @@ class WorldAutomation:
 
     def collect_view3_features(self, scene_bgr):
         return {
-            "start_game": self.find_button(scene_bgr, "start_game", roi="roi_start_game"),
+            "main_chat": self.find_button(scene_bgr, "main_chat", roi="roi_main_chat"),
+            "main_chat_notice": self.find_button(scene_bgr, "main_chat_notice", roi="roi_main_chat"),
+            "main_chat_army": self.find_button(scene_bgr, "main_chat_army", roi="roi_main_chat"),
             "resource": self.find_button(scene_bgr, "resource", roi="roi_resource"),
             "fight": self.find_button(scene_bgr, "fight", roi="roi_fight"),
             "game_has_started": self.find_button(scene_bgr, "game_has_started"),
@@ -1178,7 +1187,9 @@ class WorldAutomation:
 
     def collect_view4_features(self, scene_bgr):
         return {
-            "start_game": self.find_button(scene_bgr, "start_game", roi="roi_start_game"),
+            "main_chat": self.find_button(scene_bgr, "main_chat", roi="roi_main_chat"),
+            "main_chat_notice": self.find_button(scene_bgr, "main_chat_notice", roi="roi_main_chat"),
+            "main_chat_army": self.find_button(scene_bgr, "main_chat_army", roi="roi_main_chat"),
             "fight": self.find_button(scene_bgr, "fight", roi="roi_fight"),
             "team_exit": self.find_button(scene_bgr, "team_exit", roi="roi_team_exit"),
             "master_left": self.find_button(scene_bgr, "master_left", roi="roi_master_left"),
@@ -1191,7 +1202,9 @@ class WorldAutomation:
 
     def collect_scan_features(self, scene_bgr):
         return {
-            "start_game": self.find_button(scene_bgr, "start_game", roi="roi_start_game"),
+            "main_chat": self.find_button(scene_bgr, "main_chat", roi="roi_main_chat"),
+            "main_chat_notice": self.find_button(scene_bgr, "main_chat_notice", roi="roi_main_chat"),
+            "main_chat_army": self.find_button(scene_bgr, "main_chat_army", roi="roi_main_chat"),
             "fight": self.find_button(scene_bgr, "fight", roi="roi_fight"),
 
             "chat_recruit": self.find_button(scene_bgr, "chat_recruit"),
@@ -1207,7 +1220,12 @@ class WorldAutomation:
         }
 
     def is_home_page_by_feats(self, feats):
-        return feats.get("start_game") is not None and feats.get("fight") is not None
+        has_main_chat = (
+            feats.get("main_chat") is not None
+            or feats.get("main_chat_notice") is not None
+            or feats.get("main_chat_army") is not None
+        )
+        return has_main_chat and feats.get("fight") is not None
 
     def is_resource_page_by_feats(self, feats):
         return feats.get("resource") is not None
@@ -1239,7 +1257,7 @@ class WorldAutomation:
         if self.is_home_page_by_feats(feats):
             self._log("[STATE]处于主页中,即将进入聊天框")
             # 抢环模式
-            pos = feats["main_chat"] or feats["main_chat_army"]
+            pos = feats["main_chat"] or feats["main_chat_notice"] or feats["main_chat_army"]
             if pos:
                 self.click_at(pos[0], pos[1])
             else:
