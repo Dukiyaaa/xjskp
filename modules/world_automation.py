@@ -1311,7 +1311,8 @@ class WorldAutomation:
             # 确认是否进入邀请页面
             scene_bgr = self.bkgnd_full_window_screenshot()
             feats = self.collect_view0_features_invited(scene_bgr)
-            if feats["team_invitation"]:
+            if self.is_team_invitation_page_by_feats(feats):
+            # if feats["team_invitation"]:
                 self._log("[STATE]已进入组队邀请页面")
                 self.set_view(1)
 

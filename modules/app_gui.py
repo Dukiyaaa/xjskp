@@ -433,8 +433,16 @@ class AppGUI:
             variable=self.var_expedition_smart_option
         ).grid(row=2, column=0, columnspan=2, sticky="w", pady=(4, 0))
 
+        ttk.Label(grp, text="超时换房(秒)").grid(row=3, column=0, sticky="w", pady=(6, 0))
+        self.var_expedition_cancel_ready_timeout = tk.StringVar(value="40")
+        ttk.Entry(
+            grp,
+            textvariable=self.var_expedition_cancel_ready_timeout,
+            width=8
+        ).grid(row=3, column=1, sticky="w", pady=(6, 0))
+
         btn_row = ttk.Frame(grp)
-        btn_row.grid(row=3, column=0, columnspan=2, sticky="we", pady=(6, 0))
+        btn_row.grid(row=4, column=0, columnspan=2, sticky="we", pady=(6, 0))
         btn_row.columnconfigure(0, weight=1)
         btn_row.columnconfigure(1, weight=1)
 
@@ -776,12 +784,16 @@ class AppGUI:
 
         elif task_type == "自动远征":
             role_text = self.var_expedition_role.get()
+            cancel_ready_timeout = self._get_expedition_cancel_ready_timeout()
+            if cancel_ready_timeout is None:
+                return
             task = {
                 "task_type": "expedition",
                 "name": f"自动远征({role_text})",
                 "params": {
                     "role_text": role_text,
-                    "smart_option_enabled": self.var_expedition_smart_option.get()
+                    "smart_option_enabled": self.var_expedition_smart_option.get(),
+                    "cancel_ready_timeout": cancel_ready_timeout
                 }
             }
 
@@ -936,6 +948,16 @@ class AppGUI:
 
     def get_skill_priority_config(self):
         return list(self.skill_priority)
+
+    def _get_expedition_cancel_ready_timeout(self):
+        try:
+            value = float(self.var_expedition_cancel_ready_timeout.get().strip())
+            if value <= 0:
+                raise ValueError
+            return value
+        except Exception:
+            messagebox.showwarning("提示", "取消准备超时需要是大于 0 的数字，例如 40。")
+            return None
 
     def _apply_skill_priority_to_module(self, module):
         if module is None:
@@ -1192,6 +1214,12 @@ class AppGUI:
                     "smart_option_enabled",
                     self.var_expedition_smart_option.get()
                 )
+                cancel_ready_timeout = params.get("cancel_ready_timeout")
+                if cancel_ready_timeout is None:
+                    cancel_ready_timeout = self._get_expedition_cancel_ready_timeout()
+                    if cancel_ready_timeout is None:
+                        self._queue_start_next_task()
+                        return
                 role = "ticket" if role_text == "出票位" else "fighter"
                 window_name = self.var_expedition_window_name.get().strip()
 
@@ -1209,6 +1237,7 @@ class AppGUI:
                     self._apply_skill_priority_to_module(self.expedition_automation)
 
                 self.expedition_automation.smart_option_enabled = smart_option_enabled
+                self.expedition_automation._cancel_ready_timeout = float(cancel_ready_timeout)
                 self.expedition_automation.start(log_cb=self.log_cb)
 
                 self.var_expedition_running.set("运行中")
@@ -1809,6 +1838,9 @@ class AppGUI:
             role = "fighter"
 
         smart_option_enabled = self.var_expedition_smart_option.get()
+        cancel_ready_timeout = self._get_expedition_cancel_ready_timeout()
+        if cancel_ready_timeout is None:
+            return
 
         if self.expedition_automation is None:
             try:
@@ -1837,6 +1869,7 @@ class AppGUI:
             self._apply_skill_priority_to_module(self.expedition_automation)
 
         self.expedition_automation.smart_option_enabled = smart_option_enabled
+        self.expedition_automation._cancel_ready_timeout = cancel_ready_timeout
 
         try:
             self.expedition_automation.start(
