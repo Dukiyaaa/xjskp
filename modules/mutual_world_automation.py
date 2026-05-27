@@ -86,6 +86,7 @@ class MutualWorldAutomation:
     }
 
     ROI = {
+        "roi_main_chat": (687, 799, 784, 896),
         "roi_start_game": (237, 1164, 545, 1268),
         "roi_fight": (299, 1345, 476, 1489),
         "roi_master_left": (504, 1185, 589, 1271),
@@ -130,6 +131,9 @@ class MutualWorldAutomation:
         self.template_paths = {
             "invite": resource_path(r"images\template\invite.png"),
             "start_game": resource_path(r"images\template\start_game.png"),
+            "main_chat": resource_path(r"images\template\main_chat.png"),
+            "main_chat_notice": resource_path(r"images\template\main_chat_notice.png"),
+            "main_chat_army": resource_path(r"images\template\main_chat_army.png"),
             "fight": resource_path(r"images\template\fight.png"),
             "game_has_started": resource_path(r"images\template\game_has_started.png"),
             "chart": resource_path(r"images\template\chart.png"),
@@ -343,6 +347,9 @@ class MutualWorldAutomation:
         return {
             "invite": self.find_button(scene_bgr, "invite", threshold=0.82),
             "start_game": self.find_button(scene_bgr, "start_game", roi="roi_start_game"),
+            "main_chat": self.find_button(scene_bgr, "main_chat", roi="roi_main_chat"),
+            "main_chat_notice": self.find_button(scene_bgr, "main_chat_notice", roi="roi_main_chat"),
+            "main_chat_army": self.find_button(scene_bgr, "main_chat_army", roi="roi_main_chat"),
             "fight": self.find_button(scene_bgr, "fight", roi="roi_fight"),
             "game_has_started": self.find_button(scene_bgr, "game_has_started"),
             "chart": self.find_button(scene_bgr, "chart"),
@@ -359,6 +366,14 @@ class MutualWorldAutomation:
 
     def is_battle_page(self, feats: Dict[str, Optional[Tuple[int, int]]]) -> bool:
         return bool(feats.get("game_has_started") or feats.get("chart"))
+
+    def is_home_page(self, feats: Dict[str, Optional[Tuple[int, int]]]) -> bool:
+        has_main_chat = bool(
+            feats.get("main_chat")
+            or feats.get("main_chat_notice")
+            or feats.get("main_chat_army")
+        )
+        return bool(has_main_chat and feats.get("fight"))
 
     def is_invitation_popup(self, feats: Dict[str, Optional[Tuple[int, int]]]) -> bool:
         return bool(feats.get("team_invitation_accept_btn") or feats.get("team_invitation"))
@@ -728,7 +743,7 @@ class MutualWorldAutomation:
             self._handle_battle(scene_bgr)
             return
 
-        if feats.get("copy_invitation"):
+        if self.is_home_page(feats) and feats.get("copy_invitation"):
             self._emit_page("waiting_invite")
             self._log("主页检测到邀请入口，打开邀请弹窗")
             self._safe_click(feats["copy_invitation"], "copy_invitation", sleep_after=0.5)

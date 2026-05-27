@@ -76,6 +76,9 @@ class ExpeditionAutomation:
             "expedition_ready": resource_path(r"images\template\expedition_ready.png"),
             "cancel_ready": resource_path(r"images\template\cancel_ready.png"),
             "home_start_game": resource_path(r"images\template\start_game.png"),
+            "main_chat": resource_path(r"images\template\main_chat.png"),
+            "main_chat_notice": resource_path(r"images\template\main_chat_notice.png"),
+            "main_chat_army": resource_path(r"images\template\main_chat_army.png"),
             "fight": resource_path(r"images\template\fight.png"),
             "expidition": resource_path(r"images\template\expidition.png"),
             "start_road": resource_path(r"images\template\start_road.png"),
@@ -123,6 +126,7 @@ class ExpeditionAutomation:
         self.ROI = {
             "roi_bottom_button": (205, 1305, 609, 1470),
             "roi_home_start_game": (237, 1164, 545, 1268),
+            "roi_main_chat": (687, 799, 784, 896),
             "roi_fight": (299, 1345, 476, 1489),
             "roi_start_road": (270, 711, 549, 783),
         }
@@ -485,6 +489,24 @@ class ExpeditionAutomation:
                 roi="roi_home_start_game",
                 threshold=0.85
             ),
+            "main_chat": self.find_button(
+                scene_bgr,
+                "main_chat",
+                roi="roi_main_chat",
+                threshold=0.85
+            ),
+            "main_chat_notice": self.find_button(
+                scene_bgr,
+                "main_chat_notice",
+                roi="roi_main_chat",
+                threshold=0.85
+            ),
+            "main_chat_army": self.find_button(
+                scene_bgr,
+                "main_chat_army",
+                roi="roi_main_chat",
+                threshold=0.85
+            ),
             "fight": self.find_button(
                 scene_bgr,
                 "fight",
@@ -494,7 +516,12 @@ class ExpeditionAutomation:
         }
 
     def is_home_page(self, home_feats):
-        return bool(home_feats.get("home_start_game") and home_feats.get("fight"))
+        has_main_chat = (
+            home_feats.get("main_chat") is not None
+            or home_feats.get("main_chat_notice") is not None
+            or home_feats.get("main_chat_army") is not None
+        )
+        return bool(has_main_chat and home_feats.get("fight"))
 
     def collect_expedition_entry_features(self, scene_bgr):
         return {
