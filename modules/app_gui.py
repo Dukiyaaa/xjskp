@@ -634,7 +634,7 @@ class AppGUI:
         btn_row.columnconfigure(1, weight=1)
 
         self.btn_ads_power_start = ttk.Button(btn_row, text="启动体力广告", command=self.on_ads_power_start,
-                                              state="disabled")
+                                              state="normal")
         self.btn_ads_power_start.grid(row=0, column=0, sticky="we", padx=(0, 6))
 
         self.btn_ads_power_stop = ttk.Button(btn_row, text="停止体力广告", command=self.on_ads_power_stop,
@@ -645,7 +645,7 @@ class AppGUI:
         # 右侧：说明
         ttk.Label(
             right,
-            text="说明：要想使用自动看体力广告，需要先启动抢环，随后停止，回到主页面，再点击看广告按钮\n",
+            text="说明：使用自动看体力广告前，请确认游戏窗口已打开并处于主页面\n",
             style="Hint.TLabel"
         ).pack(anchor="nw", pady=(0, 10))
 
@@ -1717,18 +1717,22 @@ class AppGUI:
             self._push_log("ERROR", f"[GUI] reset_world_counts() 异常：{e}\n{tb}")
 
     def _ensure_ad_watcher(self) -> bool:
-        """确保 AdWatcher 已创建且绑定到当前 automation。"""
-        if self.automation is None:
-            messagebox.showwarning("提示", "请先在“环球抢环”页点击【启动】，初始化窗口后再使用广告模块。")
-            return False
-
+        """确保 AdWatcher 已创建。广告模块独立持有截图/点击能力。"""
         if self.ad_watcher is None:
+            window_name = self.var_window_name.get().strip()
+            if not window_name:
+                messagebox.showwarning("提示", "窗口名不能为空。请先在“环球抢环”页填写游戏窗口名。")
+                return False
+
             try:
-                # 按你的文件名改：比如 ad_watcher.py
                 from ad_watcher import AdWatcher
-                self.ad_watcher = AdWatcher(world=self.automation, scan_interval=300)
+                self.ad_watcher = AdWatcher(
+                    window_name=window_name,
+                    scan_interval=300,
+                    auto_resize_window=self._consume_resize_once_flag()
+                )
                 self.ad_watcher.set_callbacks(log_cb=self.log_cb, on_power_done=self.on_ads_power_done)
-                self._push_log("INFO", "[GUI] 已初始化 AdWatcher（复用当前 WorldAutomation）")
+                self._push_log("INFO", f"[GUI] 已初始化 AdWatcher(window_name='{window_name}')")
             except Exception as e:
                 tb = traceback.format_exc()
                 self._push_log("ERROR", f"[GUI] 初始化 AdWatcher 失败：{e}\n{tb}")

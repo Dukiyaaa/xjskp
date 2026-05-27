@@ -4,12 +4,17 @@
 import os
 import time
 import threading
+from ctypes import windll
 from typing import Optional, Callable, Dict, Tuple, List, Any
 
+import cv2 as cv
 import numpy as np
+import win32api
+import win32con
+import win32gui
+import win32ui
 
 from template_matcher import *
-from world_automation import *
 
 def resource_path(rel_path: str) -> str:
     return os.path.join(os.path.dirname(os.path.abspath(__file__)), rel_path)
@@ -23,8 +28,7 @@ class AdWatcher:
     - 不负责截图：scene_bgr 由外部传入（你也可以后续改成内部持有 hwnd 自己截图）
     """
 
-    def __init__(self, world: WorldAutomation, scan_interval: int = 300):
-        self.world_automation = world
+    def __init__(self, window_name="向僵尸开炮", scan_interval: int = 300, auto_resize_window=False):
         # --- 回调 ---
         self.log_cb: Optional[Callable[[str], None]] = None
 
@@ -44,6 +48,21 @@ class AdWatcher:
             # 获得奖励模板
             "reward_got": resource_path(r"images\template\reward_got.png"),
             "ad_cancel":resource_path(r"images\template\ad_cancel.png"),
+            "main_chat": resource_path(r"images\template\main_chat.png"),
+            "main_chat_notice": resource_path(r"images\template\main_chat_notice.png"),
+            "main_chat_army": resource_path(r"images\template\main_chat_army.png"),
+            "fight": resource_path(r"images\template\fight.png"),
+            "resource": resource_path(r"images\template\resource.png"),
+            "master_left": resource_path(r"images\template\master_left.png"),
+            "team_exit": resource_path(r"images\template\team_exit.png"),
+            "game_has_started": resource_path(r"images\template\game_has_started.png"),
+            "chart": resource_path(r"images\template\chart.png"),
+            "chat_recruit": resource_path(r"images\template\chat_recruit.png"),
+            "cross_server": resource_path(r"images\template\cross_server.png"),
+            "cancel": resource_path(r"images\template\cancel.png"),
+            "cancel_time_act": resource_path(r"images\template\cancel_time_act.png"),
+            "upgrade_coin": resource_path(r"images\template\upgrade_coin.png"),
+            "reconnect": resource_path(r"images\template\reconnect.png"),
         }
 
         self.template_paths = template_paths
@@ -58,6 +77,11 @@ class AdWatcher:
         self.ROI_AD_CLOSE = (630, 112, 773, 189)
         self.ROI_REWARD_GOT = (164, 106, 348, 188)
         self.ROI_AD_CANCEL = (600, 120, 770, 300)
+        self.ROI_MAIN_CHAT = (687, 799, 784, 896)
+        self.ROI_FIGHT = (299, 1345, 476, 1489)
+        self.ROI_RESOURCE = (271, 457, 514, 518)
+        self.ROI_MASTER_LEFT = (504, 1185, 589, 1271)
+        self.ROI_TEAM_EXIT = (20, 1347, 150, 1474)
         # ROI映射
         self.TPL_ROI = {
             "power": self.ROI_POWER,
@@ -68,7 +92,14 @@ class AdWatcher:
             "ad_close_3": self.ROI_AD_CLOSE,
             "reward_got": self.ROI_REWARD_GOT,
             "ad": self.ROI_AD,
-            "ad_cancel": self.ROI_AD_CANCEL
+            "ad_cancel": self.ROI_AD_CANCEL,
+            "main_chat": self.ROI_MAIN_CHAT,
+            "main_chat_notice": self.ROI_MAIN_CHAT,
+            "main_chat_army": self.ROI_MAIN_CHAT,
+            "fight": self.ROI_FIGHT,
+            "resource": self.ROI_RESOURCE,
+            "master_left": self.ROI_MASTER_LEFT,
+            "team_exit": self.ROI_TEAM_EXIT,
         }
 
         # --- 阈值（先占位，后面你可调） ---
@@ -76,6 +107,37 @@ class AdWatcher:
         self.THR_CLOSE = 0.90
         self.THR_CLAIM = 0.90
         self.THR_SKIP = 0.90
+
+        self.X_POS = 0
+        self.Y_POS = 0
+        self.WIDTH = 400
+        self.HEIGHT = 750
+        self.BASE_W, self.BASE_H = 774, 1487
+        self.PT = {
+            "resource_back": (404, 1400),
+            "leave_step1": (81, 1411),
+            "leave_step2": (526, 928),
+        }
+        self._last_click_ts = 0.0
+        self._min_click_interval = 0.05
+
+        self.HWND = win32gui.FindWindow(None, window_name)
+        if self.HWND == 0:
+            raise RuntimeError(f"未找到窗口：{window_name}（FindWindow 失败）")
+
+        if auto_resize_window:
+            win32gui.MoveWindow(
+                self.HWND,
+                self.X_POS,
+                self.Y_POS,
+                self.WIDTH,
+                self.HEIGHT,
+                True
+            )
+
+        if win32gui.IsIconic(self.HWND):
+            win32gui.ShowWindow(self.HWND, win32con.SW_RESTORE)
+            time.sleep(0.2)
 
         # 线程控制
         self.power_running = False
@@ -125,6 +187,75 @@ class AdWatcher:
                 print(msg)
         else:
             print(msg)
+
+    def normalize_scene(self, scene_bgr):
+        h, w = scene_bgr.shape[:2]
+        if (w, h) == (self.BASE_W, self.BASE_H):
+            return scene_bgr
+        return cv.resize(scene_bgr, (self.BASE_W, self.BASE_H), interpolation=cv.INTER_LINEAR)
+
+    def bkgnd_full_window_screenshot(self) -> np.ndarray:
+        windll.user32.SetProcessDPIAware()
+
+        rect = win32gui.GetClientRect(self.HWND)
+        width, height = rect[2] - rect[0], rect[3] - rect[1]
+
+        hwnd_dc = win32gui.GetWindowDC(self.HWND)
+        mfc_dc = win32ui.CreateDCFromHandle(hwnd_dc)
+        save_dc = mfc_dc.CreateCompatibleDC()
+
+        save_bit_map = win32ui.CreateBitmap()
+        save_bit_map.CreateCompatibleBitmap(mfc_dc, width, height)
+        save_dc.SelectObject(save_bit_map)
+
+        result = windll.user32.PrintWindow(self.HWND, save_dc.GetSafeHdc(), 3)
+        if result != 1:
+            self._log("[WARNING] PrintWindow 截图可能失败")
+
+        bmpinfo = save_bit_map.GetInfo()
+        bmpstr = save_bit_map.GetBitmapBits(True)
+
+        capture = np.frombuffer(bmpstr, dtype=np.uint8).reshape(
+            (bmpinfo["bmHeight"], bmpinfo["bmWidth"], 4)
+        )
+        capture = np.ascontiguousarray(capture)[..., :-1]
+
+        win32gui.DeleteObject(save_bit_map.GetHandle())
+        save_dc.DeleteDC()
+        mfc_dc.DeleteDC()
+        win32gui.ReleaseDC(self.HWND, hwnd_dc)
+
+        return self.normalize_scene(capture)
+
+    def _map_norm_to_client(self, x, y):
+        rect = win32gui.GetClientRect(self.HWND)
+        cw, ch = rect[2] - rect[0], rect[3] - rect[1]
+        return int(x * cw / self.BASE_W), int(y * ch / self.BASE_H)
+
+    def click_at_without_hover(self, x, y):
+        now = time.time()
+        if now - self._last_click_ts < self._min_click_interval:
+            return
+
+        self._last_click_ts = now
+        x, y = self._map_norm_to_client(x, y)
+        lParam = win32api.MAKELONG(x, y)
+
+        win32api.PostMessage(
+            self.HWND,
+            win32con.WM_LBUTTONDOWN,
+            win32con.MK_LBUTTON,
+            lParam
+        )
+        win32api.PostMessage(
+            self.HWND,
+            win32con.WM_LBUTTONUP,
+            0,
+            lParam
+        )
+
+    def click_at(self, x, y):
+        self.click_at_without_hover(x, y)
 
     def debug_dump_roi(self, scene_bgr: np.ndarray, roi: Tuple[int, int, int, int], name: str):
         x1, y1, x2, y2 = roi
@@ -211,7 +342,7 @@ class AdWatcher:
         """
         截图（统一入口）
         """
-        return self.world_automation.bkgnd_full_window_screenshot()
+        return self.bkgnd_full_window_screenshot()
 
     def click_xy(self, xy, delay: float = 0.4):
         """
@@ -219,11 +350,93 @@ class AdWatcher:
         """
         if xy is None:
             return
-        self.world_automation.click_at(xy[0], xy[1])
+        self.click_at(xy[0], xy[1])
         time.sleep(delay)
 
     def find(self, scene_bgr, name: str, thr: float = 0.90):
         return self.ad_find_button(scene_bgr, name, thr=thr)
+
+    def collect_page_features(self, scene_bgr) -> Dict[str, Optional[Tuple[int, int]]]:
+        return {
+            "main_chat": self.find(scene_bgr, "main_chat", thr=0.85),
+            "main_chat_notice": self.find(scene_bgr, "main_chat_notice", thr=0.85),
+            "main_chat_army": self.find(scene_bgr, "main_chat_army", thr=0.85),
+            "fight": self.find(scene_bgr, "fight", thr=0.85),
+            "resource": self.find(scene_bgr, "resource", thr=0.85),
+            "master_left": self.find(scene_bgr, "master_left", thr=0.85),
+            "team_exit": self.find(scene_bgr, "team_exit", thr=0.85),
+            "game_has_started": self.find(scene_bgr, "game_has_started", thr=0.85),
+            "chart": self.find(scene_bgr, "chart", thr=0.85),
+            "chat_recruit": self.find(scene_bgr, "chat_recruit", thr=0.85),
+            "cross_server": self.find(scene_bgr, "cross_server", thr=0.85),
+        }
+
+    def is_home_page(self, feats: Dict[str, Optional[Tuple[int, int]]]) -> bool:
+        has_main_chat = (
+            feats.get("main_chat") is not None
+            or feats.get("main_chat_notice") is not None
+            or feats.get("main_chat_army") is not None
+        )
+        return bool(has_main_chat and feats.get("fight"))
+
+    def is_resource_page(self, feats: Dict[str, Optional[Tuple[int, int]]]) -> bool:
+        return feats.get("resource") is not None
+
+    def is_team_page(self, feats: Dict[str, Optional[Tuple[int, int]]]) -> bool:
+        return feats.get("master_left") is not None or feats.get("team_exit") is not None
+
+    def is_battle_page(self, feats: Dict[str, Optional[Tuple[int, int]]]) -> bool:
+        return feats.get("game_has_started") is not None or feats.get("chart") is not None
+
+    def is_chat_page(self, feats: Dict[str, Optional[Tuple[int, int]]]) -> bool:
+        return feats.get("chat_recruit") is not None
+
+    def is_recruit_page(self, feats: Dict[str, Optional[Tuple[int, int]]]) -> bool:
+        return feats.get("cross_server") is not None
+
+    def detect_ad_popup(self, scene_bgr):
+        for name in ("cancel", "cancel_time_act"):
+            pos = self.find(scene_bgr, name, thr=0.85)
+            if pos is not None:
+                return {"is_ad": True, "close_name": name, "close_pos": pos}
+        return {"is_ad": False, "close_name": None, "close_pos": None}
+
+    def handle_ad_popup(self, scene_bgr, sleep_after=1.0) -> bool:
+        ad_info = self.detect_ad_popup(scene_bgr)
+        if not ad_info["is_ad"]:
+            return False
+        self._log(f"检测到广告/活动弹窗: {ad_info['close_name']}，关闭")
+        self.click_xy(ad_info["close_pos"], delay=sleep_after)
+        return True
+
+    def detect_upgrade_popup(self, scene_bgr):
+        pos = self.find(scene_bgr, "upgrade_coin", thr=0.85)
+        if pos is not None:
+            return {"is_upgrade": True, "close_name": "upgrade_coin", "close_pos": pos}
+        return {"is_upgrade": False, "close_name": None, "close_pos": None}
+
+    def handle_upgrade_popup(self, scene_bgr, sleep_after=1.0) -> bool:
+        upgrade_info = self.detect_upgrade_popup(scene_bgr)
+        if not upgrade_info["is_upgrade"]:
+            return False
+        self._log(f"检测到升级弹窗: {upgrade_info['close_name']}，关闭")
+        x, y = upgrade_info["close_pos"]
+        self.click_xy((x, y + 100), delay=sleep_after)
+        return True
+
+    def detect_reconnect_popup(self, scene_bgr):
+        pos = self.find(scene_bgr, "reconnect", thr=0.85)
+        if pos is not None:
+            return {"is_reconnect": True, "close_name": "reconnect", "close_pos": pos}
+        return {"is_reconnect": False, "close_name": None, "close_pos": None}
+
+    def handle_reconnect_popup(self, scene_bgr, sleep_after=1.0) -> bool:
+        reconnect_info = self.detect_reconnect_popup(scene_bgr)
+        if not reconnect_info["is_reconnect"]:
+            return False
+        self._log(f"检测到重连弹窗: {reconnect_info['close_name']}，点击")
+        self.click_xy(reconnect_info["close_pos"], delay=sleep_after)
+        return True
 
     def wait_until(self, name: str, timeout=30, interval=1.0, thr=0.90, stop_flag=None):
         t0 = time.time()
@@ -304,11 +517,11 @@ class AdWatcher:
 
             # 先尝试处理一些已知遮挡弹窗
             try:
-                if self.world_automation.handle_ad_popup(scene, sleep_after=0.8):
+                if self.handle_ad_popup(scene, sleep_after=0.8):
                     continue
-                if self.world_automation.handle_upgrade_popup(scene, sleep_after=0.8):
+                if self.handle_upgrade_popup(scene, sleep_after=0.8):
                     continue
-                if self.world_automation.handle_reconnect_popup(scene, sleep_after=0.8):
+                if self.handle_reconnect_popup(scene, sleep_after=0.8):
                     continue
             except Exception as e:
                 self._log(f"处理遮挡弹窗时异常: {e}")
@@ -326,38 +539,37 @@ class AdWatcher:
                 self.click_xy(ad_close_xy, delay=1.0)
                 continue
 
-            # 用 WorldAutomation 现成的判页逻辑
-            feats = self.world_automation.collect_scan_features(scene)
+            feats = self.collect_page_features(scene)
 
-            if self.world_automation.is_home_page_by_feats(feats):
+            if self.is_home_page(feats):
                 self._log("已成功回到主页面")
                 return True
 
-            elif self.world_automation.is_resource_page_by_feats(feats):
+            elif self.is_resource_page(feats):
                 self._log("当前在资源页，点击返回")
-                self.world_automation.click_at(*self.world_automation.PT["resource_back"])
+                self.click_at(*self.PT["resource_back"])
                 time.sleep(1.0)
                 continue
 
-            elif self.world_automation.is_team_page_by_feats(feats):
+            elif self.is_team_page(feats):
                 self._log("当前在组队页，尝试退回主页")
-                self.world_automation.click_at_without_hover(*self.world_automation.PT["leave_step1"])
+                self.click_at_without_hover(*self.PT["leave_step1"])
                 time.sleep(0.5)
-                self.world_automation.click_at_without_hover(*self.world_automation.PT["leave_step2"])
+                self.click_at_without_hover(*self.PT["leave_step2"])
                 time.sleep(1.5)
                 continue
 
-            elif self.world_automation.is_battle_page_by_feats(feats):
+            elif self.is_battle_page(feats):
                 self._log("当前仍处于战斗/结算相关页面，等待后重试")
                 time.sleep(1.0)
                 continue
 
-            elif self.world_automation.is_chat_page_by_feats(feats):
+            elif self.is_chat_page(feats):
                 self._log("当前在聊天页，等待/重试回主页")
                 time.sleep(1.0)
                 continue
 
-            elif self.world_automation.is_recruit_page_by_feats(feats):
+            elif self.is_recruit_page(feats):
                 self._log("当前在招募页，等待/重试回主页")
                 time.sleep(1.0)
                 continue
@@ -478,8 +690,7 @@ if __name__ == "__main__":
 
     print("=== power ads loop test ===")
 
-    world_automation = WorldAutomation()
-    watcher = AdWatcher(world_automation, scan_interval=1)
+    watcher = AdWatcher(scan_interval=1)
     watcher.set_callbacks(log_cb=print)
 
     # 验证的是“重复看体力广告直到没免费”
