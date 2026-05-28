@@ -1190,6 +1190,7 @@ class WorldAutomation:
             "main_chat": self.find_button(scene_bgr, "main_chat", roi="roi_main_chat"),
             "main_chat_notice": self.find_button(scene_bgr, "main_chat_notice", roi="roi_main_chat"),
             "main_chat_army": self.find_button(scene_bgr, "main_chat_army", roi="roi_main_chat"),
+            "resource": self.find_button(scene_bgr, "resource", roi="roi_resource"),
             "fight": self.find_button(scene_bgr, "fight", roi="roi_fight"),
             "team_exit": self.find_button(scene_bgr, "team_exit", roi="roi_team_exit"),
             "master_left": self.find_button(scene_bgr, "master_left", roi="roi_master_left"),
@@ -1198,6 +1199,8 @@ class WorldAutomation:
             "game_over_perfect_stone": self.find_button(scene_bgr, "game_over_perfect_stone"),
             "game_over_legendary_stone": self.find_button(scene_bgr, "game_over_legendary_stone"),
             "chart": self.find_button(scene_bgr, "chart"),
+            "chat_recruit": self.find_button(scene_bgr, "chat_recruit"),
+            "cross_server": self.find_button(scene_bgr, "cross_server"),
         }
 
     def collect_scan_features(self, scene_bgr):
@@ -1688,6 +1691,37 @@ class WorldAutomation:
 
             self._log("[STATE]战斗结束后未识别出明确页面特征，保持当前状态") #有时退回到了组队页面但没识别出来，会出问题
             return
+
+        # -------- 页面纠偏：VIEW=4 但实际已经离开战斗/结算页 --------
+        if not self.is_battle_page_by_feats(feats):
+            if self.is_home_page_by_feats(feats):
+                self._log("[STATE]VIEW=4 页面纠偏：当前实际已回到主页")
+                self.diff = None
+                self.set_view(0)
+                return
+
+            if self.is_team_page_by_feats(feats):
+                self._log("[STATE]VIEW=4 页面纠偏：当前实际处于组队页")
+                self.set_view(3)
+                return
+
+            if self.is_resource_page_by_feats(feats):
+                self._log("[STATE]VIEW=4 页面纠偏：当前实际处于资源页，即将返回主页")
+                self.click_at(*self.PT["resource_back"])
+                self.diff = None
+                self.set_view(0)
+                time.sleep(0.5)
+                return
+
+            if self.is_chat_page_by_feats(feats):
+                self._log("[STATE]VIEW=4 页面纠偏：当前实际处于聊天框")
+                self.set_view(1)
+                return
+
+            if self.is_recruit_page_by_feats(feats):
+                self._log("[STATE]VIEW=4 页面纠偏：当前实际处于招募页")
+                self.set_view(2)
+                return
 
         # -------- 情况2：战斗仍在进行中 --------
         if self._battle_auto_exit_if_due():
