@@ -184,6 +184,8 @@ class MutualWorldAutomation:
         self.invite_retry_interval = 8.0
         self.start_after_invite_delay = 4.0
         self.loop_interval = 0.6
+        self.friend_list_settle_delay = 0.6
+        self.friend_match_confirm_delay = 0.3
         self.SCAN_INTERVAL = 600
         self.SCAN_RETRY = 3
         self.SCAN_RETRY_GAP = 2.0
@@ -729,9 +731,18 @@ class MutualWorldAutomation:
             for row_idx, row_roi in enumerate(self.ROI["friend_rows"], start=1):
                 friend_pos = self._find_friend_in_scene(scene_bgr, roi=row_roi)
                 if friend_pos:
+                    self._log(f"第{row_idx}个用户框初次匹配到指定队友，位置={friend_pos}，等待复核")
+                    time.sleep(self.friend_match_confirm_delay)
+
+                    confirm_scene = self.bkgnd_full_window_screenshot()
+                    confirmed_pos = self._find_friend_in_scene(confirm_scene, roi=row_roi)
+                    if not confirmed_pos:
+                        self._log(f"第{row_idx}个用户框复核未命中，跳过本次点击")
+                        continue
+
                     invite_x = self.PT["friend_row_invite_x"][0]
-                    invite_y = (row_roi[1] + row_roi[3]) // 2
-                    self._log(f"第{row_idx}个用户框匹配到指定队友，位置={friend_pos}，点击邀请")
+                    invite_y = confirmed_pos[1]
+                    self._log(f"第{row_idx}个用户框复核命中指定队友，位置={confirmed_pos}，点击邀请")
                     self._safe_click((invite_x, invite_y), "friend_row_invite", sleep_after=1.0)
                     return True
 
@@ -750,9 +761,9 @@ class MutualWorldAutomation:
             if idx >= max_swipes:
                 break
 
-            self._log("当前区域未找到指定队友，往上划169继续查找")
-            self.swipe_vertical(x=390, y_start=528, y_end=359)
-            time.sleep(0.8)
+            self._log("当前区域未找到指定队友，往上划100继续查找")
+            self.swipe_vertical(x=390, y_start=528, y_end=428)
+            time.sleep(self.friend_list_settle_delay)
 
         self._log("扫描好友列表后仍未找到指定队友")
         return False
