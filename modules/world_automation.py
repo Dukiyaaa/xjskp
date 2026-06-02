@@ -1747,20 +1747,20 @@ class WorldAutomation:
 
             # 循环点中间词条、先锋技能、机甲技能
             # 点中间的词条
-            self.click_at_without_hover(*self.PT["skill_center"])
-            time.sleep(0.5)
-            # 先锋技能1
-            self.fight_cnt += 1
-            if self.fight_cnt % 10 == 0:
-                self.fight_cnt = 0
-                self.click_at_without_hover(*self.PT["skill_left"])
-                # time.sleep(0.5)
-                # 先锋技能2
-                # self.click_at_without_hover(*self.PT["skill_right"])
-                time.sleep(0.5)
-                # 机甲技能
-                self.click_at_without_hover(*self.PT["mecha_skill"])
-                # time.sleep(0.5)
+            # self.click_at_without_hover(*self.PT["skill_center"])
+            # time.sleep(0.5)
+            # # 先锋技能1
+            # self.fight_cnt += 1
+            # if self.fight_cnt % 10 == 0:
+            #     self.fight_cnt = 0
+            #     self.click_at_without_hover(*self.PT["skill_left"])
+            #     # time.sleep(0.5)
+            #     # 先锋技能2
+            #     # self.click_at_without_hover(*self.PT["skill_right"])
+            #     time.sleep(0.5)
+            #     # 机甲技能
+            #     self.click_at_without_hover(*self.PT["mecha_skill"])
+            #     # time.sleep(0.5)
             
         time.sleep(2)
 # ---------------------- 主程序 ---------------------

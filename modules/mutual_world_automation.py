@@ -58,6 +58,16 @@ class MutualWorldAutomation:
     ROLE_TICKET = "ticket"
     ROLE_NON_TICKET = "non_ticket"
 
+    PAGE_UNKNOWN = "unknown"
+    PAGE_HOME = "home"
+    PAGE_TEAM = "team"
+    PAGE_BATTLE = "battle"
+    PAGE_RESULT = "result"
+    PAGE_INVITATION = "invitation"
+    PAGE_CHAT = "chat"
+    PAGE_RECRUIT = "recruit"
+    PAGE_RESOURCE = "resource"
+
     ROLE_ALIASES = {
         "ticket": ROLE_TICKET,
         "host": ROLE_TICKET,
@@ -83,10 +93,12 @@ class MutualWorldAutomation:
         "friend_row_invite_x": (590, 0),
         "battle_auto_exit_menu": (69, 137),
         "battle_auto_exit_confirm": (209, 1346),
+        "resource_back": (404, 1400),
     }
 
     ROI = {
         "roi_main_chat": (687, 799, 784, 896),
+        "roi_resource": (271, 457, 514, 518),
         "roi_start_game": (237, 1164, 545, 1268),
         "roi_fight": (299, 1345, 476, 1489),
         "roi_master_left": (504, 1185, 589, 1271),
@@ -143,6 +155,13 @@ class MutualWorldAutomation:
             "team_invitation": resource_path(r"images\template\team_invitation.png"),
             "team_invitation_accept_btn": resource_path(r"images\template\team_invitation_accept_btn.png"),
             "copy_invitation": resource_path(r"images\template\copy_invitation.png"),
+            "resource": resource_path(r"images\template\resource.png"),
+            "chat_recruit": resource_path(r"images\template\chat_recruit.png"),
+            "cross_server": resource_path(r"images\template\cross_server.png"),
+            "cancel": resource_path(r"images\template\cancel.png"),
+            "cancel_time_act": resource_path(r"images\template\cancel_time_act.png"),
+            "upgrade_coin": resource_path(r"images\template\upgrade_coin.png"),
+            "reconnect": resource_path(r"images\template\reconnect.png"),
         }
         self.template_matcher = TemplateMatcher(self.template_paths)
         self._load_friend_template()
@@ -165,6 +184,10 @@ class MutualWorldAutomation:
         self.invite_retry_interval = 8.0
         self.start_after_invite_delay = 4.0
         self.loop_interval = 0.6
+        self.SCAN_INTERVAL = 600
+        self.SCAN_RETRY = 3
+        self.SCAN_RETRY_GAP = 2.0
+        self._last_scan_page = self.PAGE_UNKNOWN
 
         self.HWND = win32gui.FindWindow(None, window_name)
         if self.HWND == 0:
@@ -350,6 +373,7 @@ class MutualWorldAutomation:
             "main_chat": self.find_button(scene_bgr, "main_chat", roi="roi_main_chat"),
             "main_chat_notice": self.find_button(scene_bgr, "main_chat_notice", roi="roi_main_chat"),
             "main_chat_army": self.find_button(scene_bgr, "main_chat_army", roi="roi_main_chat"),
+            "resource": self.find_button(scene_bgr, "resource", roi="roi_resource"),
             "fight": self.find_button(scene_bgr, "fight", roi="roi_fight"),
             "game_has_started": self.find_button(scene_bgr, "game_has_started"),
             "chart": self.find_button(scene_bgr, "chart"),
@@ -359,6 +383,8 @@ class MutualWorldAutomation:
             "team_invitation": self.find_button(scene_bgr, "team_invitation"),
             "team_invitation_accept_btn": self.find_button(scene_bgr, "team_invitation_accept_btn"),
             "copy_invitation": self.find_button(scene_bgr, "copy_invitation"),
+            "chat_recruit": self.find_button(scene_bgr, "chat_recruit"),
+            "cross_server": self.find_button(scene_bgr, "cross_server"),
         }
 
     def is_team_page(self, feats: Dict[str, Optional[Tuple[int, int]]]) -> bool:
@@ -377,6 +403,151 @@ class MutualWorldAutomation:
 
     def is_invitation_popup(self, feats: Dict[str, Optional[Tuple[int, int]]]) -> bool:
         return bool(feats.get("team_invitation_accept_btn") or feats.get("team_invitation"))
+
+    def is_result_page(self, feats: Dict[str, Optional[Tuple[int, int]]]) -> bool:
+        return bool(feats.get("game_over_return"))
+
+    def is_resource_page(self, feats: Dict[str, Optional[Tuple[int, int]]]) -> bool:
+        return bool(feats.get("resource"))
+
+    def is_chat_page(self, feats: Dict[str, Optional[Tuple[int, int]]]) -> bool:
+        return bool(feats.get("chat_recruit"))
+
+    def is_recruit_page(self, feats: Dict[str, Optional[Tuple[int, int]]]) -> bool:
+        return bool(feats.get("cross_server"))
+
+    def detect_ad_popup(self, scene_bgr):
+        for name in ("cancel", "cancel_time_act"):
+            pos = self.find_button(scene_bgr, name, threshold=0.85)
+            if pos is not None:
+                return {"is_ad": True, "close_name": name, "close_pos": pos}
+        return {"is_ad": False, "close_name": None, "close_pos": None}
+
+    def handle_ad_popup(self, scene_bgr, sleep_after=1.0) -> bool:
+        ad_info = self.detect_ad_popup(scene_bgr)
+        if not ad_info["is_ad"]:
+            return False
+        self._log(f"[STATE] popup detected: {ad_info['close_name']}, close")
+        self._safe_click(ad_info["close_pos"], ad_info["close_name"], sleep_after=sleep_after)
+        return True
+
+    def detect_upgrade_popup(self, scene_bgr):
+        pos = self.find_button(scene_bgr, "upgrade_coin", threshold=0.85)
+        if pos is not None:
+            return {"is_upgrade": True, "close_name": "upgrade_coin", "close_pos": pos}
+        return {"is_upgrade": False, "close_name": None, "close_pos": None}
+
+    def handle_upgrade_popup(self, scene_bgr, sleep_after=1.0) -> bool:
+        upgrade_info = self.detect_upgrade_popup(scene_bgr)
+        if not upgrade_info["is_upgrade"]:
+            return False
+        self._log(f"[STATE] upgrade popup detected: {upgrade_info['close_name']}, close")
+        x, y = upgrade_info["close_pos"]
+        self._safe_click((x, y + 100), upgrade_info["close_name"], sleep_after=sleep_after)
+        return True
+
+    def detect_reconnect_popup(self, scene_bgr):
+        pos = self.find_button(scene_bgr, "reconnect", threshold=0.85)
+        if pos is not None:
+            return {"is_reconnect": True, "close_name": "reconnect", "close_pos": pos}
+        return {"is_reconnect": False, "close_name": None, "close_pos": None}
+
+    def handle_reconnect_popup(self, scene_bgr, sleep_after=1.0) -> bool:
+        reconnect_info = self.detect_reconnect_popup(scene_bgr)
+        if not reconnect_info["is_reconnect"]:
+            return False
+        self._log(f"[STATE] reconnect popup detected: {reconnect_info['close_name']}, click")
+        self._safe_click(reconnect_info["close_pos"], reconnect_info["close_name"], sleep_after=sleep_after)
+        return True
+
+    def detect_page(self, scene_bgr) -> str:
+        self._log("[STATE] scheduled page scan")
+
+        if self.detect_ad_popup(scene_bgr)["is_ad"]:
+            self._log("[STATE] popup blocks page scan: ad/activity")
+            return self.PAGE_UNKNOWN
+        if self.detect_upgrade_popup(scene_bgr)["is_upgrade"]:
+            self._log("[STATE] popup blocks page scan: upgrade")
+            return self.PAGE_UNKNOWN
+        if self.detect_reconnect_popup(scene_bgr)["is_reconnect"]:
+            self._log("[STATE] popup blocks page scan: reconnect")
+            return self.PAGE_UNKNOWN
+
+        feats = self.collect_features(scene_bgr)
+        if self.is_result_page(feats):
+            self._log("[STATE] scan result: result page")
+            return self.PAGE_RESULT
+        if self.is_battle_page(feats):
+            self._log("[STATE] scan result: battle page")
+            return self.PAGE_BATTLE
+        if self.is_invitation_popup(feats):
+            self._log("[STATE] scan result: invitation popup")
+            return self.PAGE_INVITATION
+        if self.is_team_page(feats):
+            self._log("[STATE] scan result: team page")
+            return self.PAGE_TEAM
+        if self.is_recruit_page(feats):
+            self._log("[STATE] scan result: recruit page")
+            return self.PAGE_RECRUIT
+        if self.is_chat_page(feats):
+            self._log("[STATE] scan result: chat page")
+            return self.PAGE_CHAT
+        if self.is_resource_page(feats):
+            self._log("[STATE] scan result: resource page")
+            return self.PAGE_RESOURCE
+        if self.is_home_page(feats):
+            self._log("[STATE] scan result: home page")
+            return self.PAGE_HOME
+
+        self._log("[STATE] scan result: unknown")
+        return self.PAGE_UNKNOWN
+
+    def scan_page_with_retry(self) -> str:
+        for i in range(1, self.SCAN_RETRY + 1):
+            if not self.run_event.is_set():
+                return self.PAGE_UNKNOWN
+
+            try:
+                scene_bgr = self.bkgnd_full_window_screenshot()
+                if self.handle_ad_popup(scene_bgr, sleep_after=1.0):
+                    continue
+                if self.handle_upgrade_popup(scene_bgr, sleep_after=1.0):
+                    continue
+                if self.handle_reconnect_popup(scene_bgr, sleep_after=1.0):
+                    continue
+
+                page = self.detect_page(scene_bgr)
+                self._log(f"[SCAN] try {i}/{self.SCAN_RETRY} => {page}")
+                if page != self.PAGE_UNKNOWN:
+                    return page
+            except Exception as exc:
+                self._log(f"[SCAN_ERROR] try {i}/{self.SCAN_RETRY}: {exc}")
+
+            self._log(f"[SCAN] unknown page, retry in {self.SCAN_RETRY_GAP:.1f}s")
+            time.sleep(self.SCAN_RETRY_GAP)
+
+        return self.PAGE_UNKNOWN
+
+    def _handle_page_correction(self, feats) -> bool:
+        if self.is_resource_page(feats):
+            self._emit_page(self.PAGE_RESOURCE)
+            self._log("[STATE] current page is resource, click back")
+            self._safe_click(self.PT["resource_back"], "resource_back", sleep_after=1.0)
+            return True
+
+        if self.is_chat_page(feats):
+            self._emit_page(self.PAGE_CHAT)
+            self._log("[STATE] current page is chat, wait/retry")
+            time.sleep(self.loop_interval)
+            return True
+
+        if self.is_recruit_page(feats):
+            self._emit_page(self.PAGE_RECRUIT)
+            self._log("[STATE] current page is recruit, wait/retry")
+            time.sleep(self.loop_interval)
+            return True
+
+        return False
 
     def _safe_click(self, point, reason: str, sleep_after: float = 0.5):
         self._log(f"点击 {reason} 坐标={point}")
@@ -775,10 +946,28 @@ class MutualWorldAutomation:
         time.sleep(self.loop_interval)
 
     def _run_loop(self):
+        next_scan_ts = time.monotonic() + self.SCAN_INTERVAL
         while self.run_event.is_set():
             try:
+                now = time.monotonic()
+                if now >= next_scan_ts:
+                    try:
+                        page = self.scan_page_with_retry()
+                        if page != self.PAGE_UNKNOWN:
+                            self._last_scan_page = page
+                            self._log(f"[SCAN] success => page={page}")
+                            self._emit_page(page)
+                        else:
+                            self._log("[SCAN] all retries failed, keep normal loop")
+                    except Exception as exc:
+                        self._log(f"[SCAN_ERROR] {exc}")
+                    next_scan_ts = now + self.SCAN_INTERVAL
+
                 scene_bgr = self.bkgnd_full_window_screenshot()
                 feats = self.collect_features(scene_bgr)
+                if self._handle_page_correction(feats):
+                    continue
+
                 if self.role == self.ROLE_TICKET:
                     self._handle_ticket(feats, scene_bgr)
                 else:

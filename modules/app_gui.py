@@ -580,7 +580,16 @@ class AppGUI:
         self.cmb_mutual_world_friend = ttk.Combobox(
             grp_state,
             textvariable=self.var_mutual_world_friend_name,
-            values=["\u4f46\u6b32\u5b63\u5b63\u5982\u6625", "\u5929\u5929\u5f00\u5fc3", "\u6625\u98ce\u5341\u91cc"],
+            values=[
+                "\u4f46\u6b32\u5b63\u5b63\u5982\u6625",  # 但欲季季如春
+                "\u5929\u5929\u5f00\u5fc3",              # 天天开心
+                "\u6625\u98ce\u5341\u91cc",              # 春风十里
+                "\u5c71\u836f\u54e5\u54e5",              # 山药哥哥
+
+                "\u6ecb\u6ecb\u5927\u961f\u957f",        # 滋滋大队长
+                "kk\u56ed\u533a\u6bd2\u7597\u5e08",      # kk园区毒疗师
+                "\u65e0\u4e8b\u5c0f\u795e\u4ed9"         # 无事小神仙
+            ],
             state="readonly",
             width=21
         )
@@ -1437,6 +1446,10 @@ class AppGUI:
                         "result": "\u7ed3\u7b97\u9875",
                         "invitation": "\u9080\u8bf7\u5f39\u7a97",
                         "waiting_invite": "\u7b49\u5f85\u9080\u8bf7",
+                        "home": "\u4e3b\u9875",
+                        "chat": "\u804a\u5929\u9875",
+                        "recruit": "\u62db\u52df\u9875",
+                        "resource": "\u8d44\u6e90\u9875",
                         "unknown": "\u672a\u77e5",
                     }
                     self.var_mutual_world_page.set(page_map.get(payload, str(payload)))
@@ -1924,6 +1937,30 @@ class AppGUI:
                 f"{role_prefix}_friend_chunfengshili.png",
                 "friend_chunfengshili.png",
             ],
+            "\u5c71\u836f\u54e5\u54e5": [
+                f"{role_prefix}_friend_shanyaogege.png",
+                "friend_shanyaogege.png",
+            ],
+            "shanyaogege": [
+                f"{role_prefix}_friend_shanyaogege.png",
+                "friend_shanyaogege.png",
+            ],
+            "\u6ecb\u6ecb\u5927\u961f\u957f": [
+                f"{role_prefix}_friend_zizidaduizhang.png",
+                "friend_zizidaduizhang.png",
+            ],
+            "zizidaduizhang": [
+                f"{role_prefix}_friend_zizidaduizhang.png",
+                "friend_zizidaduizhang.png",
+            ],
+            "kk\u56ed\u533a\u6bd2\u7597\u5e08": [
+                f"{role_prefix}_friend_kkyuanquduliaoshi.png",
+                "friend_kkyuanquduliaoshi.png",
+            ],
+            "kkyuanquduliaoshi": [
+                f"{role_prefix}_friend_kkyuanquduliaoshi.png",
+                "friend_kkyuanquduliaoshi.png",
+            ],
         }
         names = [
             *alias_map.get(friend_name, []),
@@ -1951,7 +1988,14 @@ class AppGUI:
     def _refresh_mutual_world_friend_combo(self):
         if self.cmb_mutual_world_friend is None:
             return
-        names = ["\u4f46\u6b32\u5b63\u5b63\u5982\u6625", "\u5929\u5929\u5f00\u5fc3", "\u6625\u98ce\u5341\u91cc"]
+        names = [
+            "\u4f46\u6b32\u5b63\u5b63\u5982\u6625",
+            "\u5929\u5929\u5f00\u5fc3",
+            "\u6625\u98ce\u5341\u91cc",
+            "\u5c71\u836f\u54e5\u54e5",
+            "\u6ecb\u6ecb\u5927\u961f\u957f",
+            "kk\u56ed\u533a\u6bd2\u7597\u5e08",
+        ]
         for key in self.mutual_world_friend_templates:
             name = key[1] if isinstance(key, tuple) else key
             if name not in names:
@@ -2009,6 +2053,15 @@ class AppGUI:
             "friend_chunfengshili.png",
             "ticket_friend_chunfengshili.png",
             "no_ticket_friend_chunfengshili.png",
+            "friend_shanyaogege.png",
+            "ticket_friend_shanyaogege.png",
+            "no_ticket_friend_shanyaogege.png",
+            "friend_zizidaduizhang.png",
+            "ticket_friend_zizidaduizhang.png",
+            "no_ticket_friend_zizidaduizhang.png",
+            "friend_kkyuanquduliaoshi.png",
+            "ticket_friend_kkyuanquduliaoshi.png",
+            "no_ticket_friend_kkyuanquduliaoshi.png",
         }
         if not friend_template or template_basename in auto_template_names:
             friend_template = self._resolve_mutual_world_friend_template(friend_name, role=role)
