@@ -1961,6 +1961,14 @@ class AppGUI:
                 f"{role_prefix}_friend_kkyuanquduliaoshi.png",
                 "friend_kkyuanquduliaoshi.png",
             ],
+            "\u65e0\u4e8b\u5c0f\u795e\u4ed9": [
+                f"{role_prefix}_friend_wushixiaoshenxian.png",
+                "friend_wushixiaoshenxian.png",
+            ],
+            "wushixiaoshenxian": [
+                f"{role_prefix}_friend_wushixiaoshenxian.png",
+                "friend_wushixiaoshenxian.png",
+            ],
         }
         names = [
             *alias_map.get(friend_name, []),
@@ -1995,6 +2003,7 @@ class AppGUI:
             "\u5c71\u836f\u54e5\u54e5",
             "\u6ecb\u6ecb\u5927\u961f\u957f",
             "kk\u56ed\u533a\u6bd2\u7597\u5e08",
+            "\u65e0\u4e8b\u5c0f\u795e\u4ed9",
         ]
         for key in self.mutual_world_friend_templates:
             name = key[1] if isinstance(key, tuple) else key
@@ -2062,6 +2071,9 @@ class AppGUI:
             "friend_kkyuanquduliaoshi.png",
             "ticket_friend_kkyuanquduliaoshi.png",
             "no_ticket_friend_kkyuanquduliaoshi.png",
+            "friend_wushixiaoshenxian.png",
+            "ticket_friend_wushixiaoshenxian.png",
+            "no_ticket_friend_wushixiaoshenxian.png",
         }
         if not friend_template or template_basename in auto_template_names:
             friend_template = self._resolve_mutual_world_friend_template(friend_name, role=role)
