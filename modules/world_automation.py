@@ -306,6 +306,9 @@ class WorldAutomation:
         # self.OCR_READER = easyocr.Reader(['ch_sim', 'en'], gpu=False)
         # 进入组队页面后，用于判断是否需要判断难度
         self.diff = None
+        self.team_wait_started_ts = None
+        self.team_wait_timeout_done = False
+        self.team_wait_timeout_seconds = 60.0
         # 战斗日志记录
         # --- 单局统计 ---
         self._run_idx = 0  # 第几把（从 0 计起，开局时 +1）
@@ -403,8 +406,43 @@ class WorldAutomation:
     def set_view(self, v: int):
         if v == self.VIEW:
             return
+        old_view = self.VIEW
         self.VIEW = v
+        if old_view == 3 and v != 3:
+            self._clear_team_wait_timer()
         self._emit_view(v)
+
+    def _start_team_wait_timer(self):
+        if self.invite_only:
+            return
+        if self.team_wait_started_ts is None:
+            self.team_wait_started_ts = time.time()
+            self.team_wait_timeout_done = False
+            self._log("[STATE]低环退出判定通过，开始组队等待计时")
+
+    def _clear_team_wait_timer(self):
+        self.team_wait_started_ts = None
+        self.team_wait_timeout_done = False
+
+    def _leave_team_if_wait_timeout(self, leave_step1, leave_step2) -> bool:
+        if self.invite_only:
+            return False
+        if self.team_wait_started_ts is None or self.team_wait_timeout_done:
+            return False
+
+        elapsed = time.time() - self.team_wait_started_ts
+        if elapsed < self.team_wait_timeout_seconds:
+            return False
+
+        self._log("[STATE]合格队伍等待超过1分钟仍未进入战斗，执行两步退出")
+        self.click_at_without_hover(*leave_step1)
+        time.sleep(0.2)
+        self.click_at_without_hover(*leave_step2)
+        self.team_wait_timeout_done = True
+        self.diff = None
+        self.set_view(0)
+        time.sleep(2)
+        return True
 
     def debug_dump_roi(self, roi_name: str, scene_bgr=None, save_full_with_box: bool = True):
         """
@@ -617,6 +655,7 @@ class WorldAutomation:
         self._battle_auto_exit_done = False
         self._game_start_ts = None
         self._game_diff = None
+        self._clear_team_wait_timer()
         # 计数是否要重置看你需求；这里先不动 test_cnt（你可以自己手动清零）
         # self.test_cnt = 0
 
@@ -1527,6 +1566,7 @@ class WorldAutomation:
 
         # -------- 情况1：难度低于预期，尝试退出 --------
         if self.diff is not None and self.diff < int(self.EXPECT_DIFF):
+            self._clear_team_wait_timer()
             # self._log("[STATE]当队里有两人时,退出分为两步,先点左下角退出键,再点弹窗确认")
             self.click_at_without_hover(leave1_x, leave1_y)
             time.sleep(0.2)
@@ -1567,6 +1607,7 @@ class WorldAutomation:
             self._log("[STATE]未能检测出环球难度等级")
         else:
             self._log(f"[STATE]检测出环球难度等级={self.diff}")
+        self._start_team_wait_timer()
 
         scene_bgr = self.bkgnd_full_window_screenshot()
         feats = self.collect_view3_features(scene_bgr)
@@ -1575,7 +1616,11 @@ class WorldAutomation:
             self._log("[STATE]房主已开启游戏，祝你胜利")
             self._game_begin(self.diff)
             self.stop_clicking()
+            self._clear_team_wait_timer()
             self.set_view(4)
+            return
+
+        if self._leave_team_if_wait_timeout((leave1_x, leave1_y), (leave2_x, leave2_y)):
             return
 
         if feats["master_left"]:
@@ -1583,6 +1628,7 @@ class WorldAutomation:
             self._log("[STATE]当队里只有一人时,退出只有一步,直接点击左下角退出键")
 
             self.click_at_without_hover(leave1_x, leave1_y)
+            self._clear_team_wait_timer()
             time.sleep(2)
 
             # 有时会退出到了主界面但游戏还是开始了，再检查一次
@@ -1599,6 +1645,7 @@ class WorldAutomation:
         if self.is_resource_page_by_feats(feats):
             self._log("[STATE]当前处于资源页,即将返回招募页")
             self.click_at(*self.PT["resource_back"])
+            self._clear_team_wait_timer()
             self.set_view(0)
             time.sleep(0.5)
             return
